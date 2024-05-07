@@ -188,7 +188,7 @@ class SamplingNode(Node):
             remaining_eps = eps
             for i in max_index_ordering[::direction]:
                 eps_to_use = min(remaining_eps, eps_limit[i])
-                eps_max[i] = -direction * eps_to_use
+                eps_max[i] += -direction * eps_to_use
                 remaining_eps -= eps_to_use
                 if remaining_eps <= 0:
                     break
@@ -211,7 +211,7 @@ class SamplingNode(Node):
             remaining_eps = eps
             for i in min_index_ordering[::direction]:
                 eps_to_use = min(remaining_eps, eps_limit[i])
-                eps_min[i] = +direction * eps_to_use
+                eps_min[i] += +direction * eps_to_use
                 remaining_eps -= eps_to_use
                 if remaining_eps <= 0:
                     break
