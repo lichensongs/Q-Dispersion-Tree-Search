@@ -68,7 +68,7 @@ def test_sample_phi(c, eps, intervals, weights):
     sample_interval = SamplingNode.Phi(c, eps, intervals, weights)
     perturbed_interval = perturb_intervals(intervals, weights, eps, c)
     print(f"\n========TEST=========\n intervals:\n{intervals}, c: {c}, eps: {eps},  weights: {weights}")
-    assert np.max(np.abs(sample_interval - perturbed_interval)) <= 1e-8, f"sample_interval: {sample_interval}, perturbed_interval: {perturbed_interval}"
+    assert np.max(np.abs(sample_interval - perturbed_interval)) <= 1e-8, f"phi_interval: {sample_interval}, perturbed_interval: {perturbed_interval}"
     print('========PASSED========\n')
 
 if __name__ == '__main__':

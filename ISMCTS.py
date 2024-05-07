@@ -1,7 +1,7 @@
 import numpy as np
 
 import abc
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 c_PUCT = 1.0
@@ -23,12 +23,41 @@ class InfoSet(abc.ABC):
     def has_hidden_info(self) -> bool:
         pass
 
-    # more...
-
+    @abc.abstractmethod
+    def get_current_player(self) -> int:
+        pass
+    
+    @abc.abstractmethod
+    def get_game_outcome(self) -> Optional[int]:
+        pass
+    
+    @abc.abstractmethod
+    def get_actions(self) -> List[Action]:
+        pass
+    
+    @abc.abstractmethod
+    def get_H_mask(self) -> np.ndarray:
+        pass
+    
+    @abc.abstractmethod
+    def apply(self, action: Action) -> 'InfoSet':
+        pass
+    
+    @abc.abstractmethod
+    def instantiate_hidden_state(self, h: HiddenValue) -> 'InfoSet':
+        pass
+    
+    
 
 class Model(abc.ABC):
     # add abstract methods
-    pass
+    @abc.abstractmethod
+    def action_eval(self, info_set: InfoSet) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        pass
+    
+    @abc.abstractmethod
+    def hidden_eval(self, info_set: InfoSet) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        pass
 
 
 class Node(abc.ABC):
