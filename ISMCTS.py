@@ -207,49 +207,49 @@ class SamplingNode(Node):
         Returns the interval Phi(H) as an Interval.
         """
 
-        eps_max = np.zeros_like(H)
+        H_max = H.copy()
         max_alloc_arr = -Q[:, 0]
         max_alloc_arr[c] = -Q[c, 1]
         max_index_ordering = np.argsort(max_alloc_arr)
 
         for direction in (-1, 1):
-            eps_limit = (1 - H) if direction == -1 else H
+            eps_limit = (1 - H_max) if direction == -1 else H_max
             remaining_eps = eps
             for i in max_index_ordering[::direction]:
                 eps_to_use = min(remaining_eps, eps_limit[i])
-                eps_max[i] += -direction * eps_to_use
+                H_max[i] -= direction * eps_to_use
                 remaining_eps -= eps_to_use
                 if remaining_eps <= 0:
                     break
 
-        assert np.sum(eps_max) == 0, eps_max
+        assert np.isclose(np.sum(H_max), 1), H_max
 
         Q_max = Q[:, 0].copy()
         Q_max[c] = Q[c, 1]
-        Z_max = -(H + eps_max)
+        Z_max = -H_max
         Z_max[c] += 1
         Phi_max = np.dot(Z_max, Q_max)
 
-        eps_min = np.zeros_like(H)
+        H_min = H.copy()
         min_alloc_arr = -Q[:, 1]
         min_alloc_arr[c] = -Q[c, 0]
         min_index_ordering = np.argsort(min_alloc_arr)
 
         for direction in (-1, 1):
-            eps_limit = (1 - H) if direction == +1 else H
+            eps_limit = (1 - H_min) if direction == +1 else H_min
             remaining_eps = eps
             for i in min_index_ordering[::direction]:
                 eps_to_use = min(remaining_eps, eps_limit[i])
-                eps_min[i] += +direction * eps_to_use
+                H_min[i] += direction * eps_to_use
                 remaining_eps -= eps_to_use
                 if remaining_eps <= 0:
                     break
 
-        assert np.sum(eps_min) == 0, eps_min
+        assert np.isclose(np.sum(H_min), 1), H_min
 
         Q_min = Q[:, 1].copy()
         Q_min[c] = Q[c, 0]
-        Z_min = -(H + eps_min)
+        Z_min = -H_min
         Z_min[c] += 1
         Phi_min = np.dot(Z_min, Q_min)
 

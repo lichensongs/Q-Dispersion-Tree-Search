@@ -81,8 +81,23 @@ if __name__ == '__main__':
     test_sample_phi(c, eps, intervals, weights)
 
     c = 0
+    eps = 0.3
+    intervals = np.array([[1, 2], [3, 4]])
+    weights = np.array([0.3, 0.7])
+
+    test_sample_phi(c, eps, intervals, weights)
+
+
+    c = 0
     eps = 0.5
     intervals = np.array([[0, 6], [3, 4]])
+    weights = np.array([0.3, 0.7])
+
+    test_sample_phi(c, eps, intervals, weights)
+
+    c = 0
+    eps = 0.5
+    intervals = np.array([[1, 2], [3, 4]])
     weights = np.array([0.3, 0.7])
 
     test_sample_phi(c, eps, intervals, weights)
