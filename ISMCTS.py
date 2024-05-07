@@ -190,7 +190,7 @@ class SamplingNode(Node):
         Q: shape of (n, 2)
 
         H is a hidden state probability distribution.
-        Q represents a utility-belief-intervals for each hidden state.
+        Q represents a utility-belief-interval for each hidden state.
         c is an index sampled from H.
 
         Computes:
@@ -206,55 +206,32 @@ class SamplingNode(Node):
 
         Returns the interval Phi(H) as an Interval.
         """
+        one_c = np.zeros_like(H)
+        one_c[c] = 1
 
-        H_max = H.copy()
-        max_alloc_arr = -Q[:, 0]
-        max_alloc_arr[c] = -Q[c, 1]
-        max_index_ordering = np.argsort(max_alloc_arr)
+        output = np.zeros(2)
+        for index in (0, 1):
+            index_sign = 1 - 2 * index
+            H_prime = H.copy()
+            phi_partial_extreme = -Q[:, 1 - index]
+            phi_partial_extreme[c] = -Q[c, index]
+            index_ordering = np.argsort(phi_partial_extreme)
 
-        for direction in (-1, 1):
-            eps_limit = (1 - H_max) if direction == -1 else H_max
-            remaining_eps = eps
-            for i in max_index_ordering[::direction]:
-                eps_to_use = min(remaining_eps, eps_limit[i])
-                H_max[i] -= direction * eps_to_use
-                remaining_eps -= eps_to_use
-                if remaining_eps <= 0:
-                    break
+            for direction in (-1, 1):
+                eps_limit = (1 - H_prime) if direction == index_sign else H_prime
+                remaining_eps = eps
+                for i in index_ordering[::direction]:
+                    eps_to_use = min(remaining_eps, eps_limit[i])
+                    H_prime[i] += index_sign * direction * eps_to_use
+                    remaining_eps -= eps_to_use
+                    if remaining_eps <= 0:
+                        break
 
-        assert np.isclose(np.sum(H_max), 1), H_max
+            assert np.isclose(np.sum(H_prime), 1), H_prime
 
-        Q_max = Q[:, 0].copy()
-        Q_max[c] = Q[c, 1]
-        Z_max = -H_max
-        Z_max[c] += 1
-        Phi_max = np.dot(Z_max, Q_max)
-
-        H_min = H.copy()
-        min_alloc_arr = -Q[:, 1]
-        min_alloc_arr[c] = -Q[c, 0]
-        min_index_ordering = np.argsort(min_alloc_arr)
-
-        for direction in (-1, 1):
-            eps_limit = (1 - H_min) if direction == +1 else H_min
-            remaining_eps = eps
-            for i in min_index_ordering[::direction]:
-                eps_to_use = min(remaining_eps, eps_limit[i])
-                H_min[i] += direction * eps_to_use
-                remaining_eps -= eps_to_use
-                if remaining_eps <= 0:
-                    break
-
-        assert np.isclose(np.sum(H_min), 1), H_min
-
-        Q_min = Q[:, 1].copy()
-        Q_min[c] = Q[c, 0]
-        Z_min = -H_min
-        Z_min[c] += 1
-        Phi_min = np.dot(Z_min, Q_min)
-
-        assert Phi_min <= Phi_max
-        output = np.array([Phi_min, Phi_max])
+            q = Q[:, 1 - index].copy()
+            q[c] = Q[c, index]
+            output[index] = np.dot(one_c - H_prime, q)
 
         if verbose:
             print('*****')
@@ -263,7 +240,7 @@ class SamplingNode(Node):
             print('Q = %s' % Q)
             print('c = %s' % c)
             print('eps = %s' % eps)
-            print('Phi=%s' % output)
+            print('Phi = %s' % output)
         return output
 
     def expand(self, model: Model):
