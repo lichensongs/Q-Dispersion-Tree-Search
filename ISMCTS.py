@@ -1,64 +1,17 @@
-import numpy as np
+from KuhnPoker import InfoSet, Action, HiddenValue, Interval, IntervalLike, KuhnPokerInfoSet, Model, Card, KuhnPokerModel
 
+import numpy as np
 import abc
 from typing import Dict, List, Optional, Tuple
 
 
 c_PUCT = 1.0
-
-Action = int
-Interval = np.ndarray  # shape of (2,)
-IntervalLike = Interval | float
-HiddenValue = int
-
+DEBUG = True
 
 def to_interval(i: IntervalLike) -> Interval:
     if isinstance(i, Interval):
         return i
     return np.array([i, i])
-
-
-class InfoSet(abc.ABC):
-    @abc.abstractmethod
-    def has_hidden_info(self) -> bool:
-        pass
-
-    @abc.abstractmethod
-    def get_current_player(self) -> int:
-        pass
-    
-    @abc.abstractmethod
-    def get_game_outcome(self) -> Optional[int]:
-        pass
-    
-    @abc.abstractmethod
-    def get_actions(self) -> List[Action]:
-        pass
-    
-    @abc.abstractmethod
-    def get_H_mask(self) -> np.ndarray:
-        pass
-    
-    @abc.abstractmethod
-    def apply(self, action: Action) -> 'InfoSet':
-        pass
-    
-    @abc.abstractmethod
-    def instantiate_hidden_state(self, h: HiddenValue) -> 'InfoSet':
-        pass
-    
-    
-
-class Model(abc.ABC):
-    # add abstract methods
-    @abc.abstractmethod
-    def action_eval(self, info_set: InfoSet) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        pass
-    
-    @abc.abstractmethod
-    def hidden_eval(self, info_set: InfoSet) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        pass
-
 
 class Node(abc.ABC):
     def __init__(self, info_set: InfoSet, Q: IntervalLike=0):
@@ -155,8 +108,9 @@ class ActionNode(Node):
             action_index = np.random.choice(len(self.P), p=mixing_distr)
             self.MIXED = (self.MIXED * (self.n_mixed-1) + mixing_distr) / self.n_mixed
 
-        E_mixed = np.sum(Qc * self.MIXED, axis=0)
-        E_pure = np.sum(Qc * self.PURE, axis=0)
+        na = np.newaxis
+        E_mixed = np.sum(Qc * self.MIXED[:, na], axis=0)
+        E_pure = np.sum(Qc * self.PURE[:, na], axis=0)
         self.Q = (self.n_mixed * E_mixed + self.n_pure * E_pure) / (self.n_mixed + self.n_pure)
         assert self.Q.shape == (2, )
 
@@ -273,25 +227,24 @@ class Tree:
         self.model = model
         self.root = root
 
+    def get_visit_distribution(self, n: int) -> Dict[Action, float]:
+        while self.root.N <= n:
+            if DEBUG:
+                print(f'=============== # visit: {self.root.N}  ===============')
+            self.root.visit(self.model)
+            if self.root.N == 1:
+                continue
+
+        n_total = self.root.N
+        return {action: node.N / n_total for action, node in self.root.children.items()}
+
     def visit(self):
         self.root.visit()
 
 
 if __name__ == '__main__':
-    c = 0
-    eps = 0
-    Q = np.array([[1, 2], [3, 4]])
-    H = np.array([0.5, 0.5])
-    SamplingNode.Phi(c, eps, Q, H, verbose=True)
-
-    c = 0
-    eps = 0
-    Q = np.array([[0, 6], [3, 4]])
-    H = np.array([0.5, 0.5])
-    SamplingNode.Phi(c, eps, Q, H, verbose=True)
-
-    c = 0
-    eps = 0.1
-    Q = np.array([[0, 6], [3, 4]])
-    H = np.array([0.5, 0.5])
-    SamplingNode.Phi(c, eps, Q, H, verbose=True)
+    info_set = KuhnPokerInfoSet([Action.PASS, Action.ADD_CHIP], [Card.QUEEN, None])
+    model = KuhnPokerModel(1/3, 1/3)
+    root = ActionNode(info_set)
+    mcts = Tree(model, root)
+    mcts.get_visit_distribution(5)
