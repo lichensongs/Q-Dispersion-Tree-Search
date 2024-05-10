@@ -53,7 +53,7 @@ def perturb_intervals(intervals: np.ndarray, weights: np.ndarray, eps: float, c:
     perturbed_weights = perturb_by_eps(weights, eps)
     perturbed_weights = - perturbed_weights
     perturbed_weights[:, c] += 1
-    
+
     weighted_intervals = []
     for weights in perturbed_weights:
         weighted_intervals.append(eval_weighted_interval(intervals, weights))
@@ -69,7 +69,7 @@ def test_sample_phi(c, eps, intervals, weights):
     perturbed_interval = perturb_intervals(intervals, weights, eps, c)
     print(f"\n========TEST=========\n intervals:\n{intervals}, c: {c}, eps: {eps},  weights: {weights}")
     assert np.max(np.abs(sample_interval - perturbed_interval)) <= 1e-8, f"phi_interval: {sample_interval}, perturbed_interval: {perturbed_interval}"
-    print('========PASSED========\n')
+    print(f'========PASSED========{sample_interval}\n')
 
 if __name__ == '__main__':
 
@@ -99,5 +99,19 @@ if __name__ == '__main__':
     eps = 0.5
     intervals = np.array([[1, 2], [3, 4]])
     weights = np.array([0.3, 0.7])
+
+    test_sample_phi(c, eps, intervals, weights)
+
+    c = 0
+    eps = 0.05
+    intervals = np.array([[1, 1], [-2, -2]])
+    weights = np.array([2/3, 1/3])
+
+    test_sample_phi(c, eps, intervals, weights)
+
+    c = 1
+    eps = 0.05
+    intervals = np.array([[1, 1], [-2, -2]])
+    weights = np.array([0.0, 1.0])
 
     test_sample_phi(c, eps, intervals, weights)

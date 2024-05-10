@@ -180,5 +180,5 @@ if __name__ == '__main__':
     model = KuhnPokerModel(1/3, 1/3)
     root = ActionNode(info_set)
     mcts = Tree(model, root)
-    visit_dist = mcts.get_visit_distribution(15)
+    visit_dist = mcts.get_visit_distribution(1000)
     print(visit_dist)

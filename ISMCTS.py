@@ -7,9 +7,9 @@ import numpy as np
 import abc
 from typing import Dict, Optional
 
-
+EPS = 0.05
 c_PUCT = 1.0
-DEBUG = True
+DEBUG = False
 
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
 
@@ -36,9 +36,68 @@ class Node(abc.ABC):
     def visit(self, model: Model):
         pass
 
+    @staticmethod
+    def Phi(c: HiddenValue, eps: float, Q: np.ndarray, H: np.ndarray, verbose=False) -> Interval:
+        """
+        H: shape of (n, )
+        Q: shape of (n, 2)
+
+        H is a hidden state probability distribution.
+        Q represents a utility-belief-interval for each hidden state.
+        c is an index sampled from H.
+
+        Computes:
+
+        Phi(H) = union_{H' in N_epsilon(H)} phi(H')
+
+        where
+
+        N_epsilon(H) = {H' | ||H - H'||_1 <= epsilon}
+        Q_left = Q[:, 0]
+        Q_right = Q[:, 1]
+        phi(H') = union_{Q_left <= q <= Q_right} (q[c] - sum_i H'[i] * q[i])
+
+        Returns the interval Phi(H) as an Interval.
+        """
+        one_c = np.zeros_like(H)
+        one_c[c] = 1
+
+        output = np.zeros(2)
+        for index in (0, 1):
+            index_sign = 1 - 2 * index
+            H_prime = H.copy()
+            phi_partial_extreme = -Q[:, 1 - index]
+            phi_partial_extreme[c] = -Q[c, index]
+            index_ordering = np.argsort(phi_partial_extreme)
+
+            for direction in (-1, 1):
+                eps_limit = (1 - H_prime) if direction == index_sign else H_prime
+                remaining_eps = eps
+                for i in index_ordering[::direction]:
+                    eps_to_use = min(remaining_eps, eps_limit[i])
+                    H_prime[i] += index_sign * direction * eps_to_use
+                    remaining_eps -= eps_to_use
+                    if remaining_eps <= 0:
+                        break
+
+            assert np.isclose(np.sum(H_prime), 1), H_prime
+
+            q = Q[:, 1 - index].copy()
+            q[c] = Q[c, index]
+            output[index] = np.dot(one_c - H_prime, q)
+
+        if verbose:
+            print('*****')
+            print('Phi computation:')
+            print('H = %s' % H)
+            print('Q = %s' % Q)
+            print('c = %s' % c)
+            print('eps = %s' % eps)
+            print('Phi = %s' % output)
+        return output
 
 class ActionNode(Node):
-    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0, spawned_tree=None):
+    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0, spawned_tree=None, eps=EPS):
         super().__init__(info_set, tree_owner=tree_owner, Q=initQ)
 
         self.actions = info_set.get_actions()
@@ -47,6 +106,7 @@ class ActionNode(Node):
         self.V = None  #self.game_outcome if self.terminal() else None
         self.Vc = None
         self.spawned_tree = spawned_tree
+        self.eps = eps
         # self.recent_action = None
 
         if self.terminal():
@@ -144,14 +204,22 @@ class ActionNode(Node):
         if self.spawned_tree is not None:
             action = self.spawned_tree.get_spawned_tree_action()
             if DEBUG:
-                print(f'- spawned tree action: {action}')
+                print(f'========== spawned tree action: {action}, root: {self.spawned_tree.root}')
             child_Q = self.children[action].visit(model)
 
-            self.Q = self.Q * (self.N - 1) / self.N + child_Q / self.N
+            luck_adjusted_Q = self.calc_luck_adjusted_Q(child_Q, action)
 
+            old_Q = self.Q
+            self.Q = self.Q * (self.N - 1) / self.N + luck_adjusted_Q / self.N
             if DEBUG:
+                print(f'- child_Q: {child_Q}, luck_adjusted: {luck_adjusted_Q}')
                 print(f'- update Q to {self.Q} from {old_Q}')
                 print(f'= end visit {self}')
+
+                if DEBUG:
+                    print(f'- update Q to {self.Q} from {old_Q}')
+                    print(f'= end visit {self}')
+
             return self.Q
 
         else:
@@ -187,10 +255,30 @@ class ActionNode(Node):
                 print(f'- update Q to {self.Q} from {old_Q}')
                 print(f'= end visit {self}')
 
+    def calc_luck_adjusted_Q(self, Q_h: Interval, h) -> Interval:
+        child_Qs = np.zeros((len(self.children), 2))
+        for i, (_, child) in enumerate(self.children.items()):
+            child_Qs[i] = child.Q
+        child_Qs = np.array(child_Qs)
+
+        ix = list(self.children.keys()).index(h)
+
+        # this is the only difference between ActionNode and SamplingNode. ActionNode us
+        luck_adjustment = self.Phi(ix, self.eps, child_Qs, self.P)
+
+        luck_adjusted_Q = np.array([Q_h[0] - luck_adjustment[1], Q_h[1] - luck_adjustment[0]])
+
+        if DEBUG:
+            print(f'-- calc luck adjusted Q:')
+            for q in child_Qs:
+                print(f'-- child_Qs: {q}')
+            print(f'-- luck_adjustment: {luck_adjustment}')
+
+        return luck_adjusted_Q
 
 
 class SamplingNode(Node):
-    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0, eps=0.01):
+    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0, eps=EPS):
         super().__init__(info_set, tree_owner, Q=initQ)
         self.H = None
         self.V = None
@@ -202,7 +290,7 @@ class SamplingNode(Node):
         self.eps = eps
 
     def __str__(self):
-        return f'Hidden({self.info_set}, N={self.N}, Q={self.Q}), V={self.V}'
+        return f'Hidden({self.info_set}, tree_owner={self.tree_owner}, N={self.N}, Q={self.Q}), V={self.V}'
 
     def apply_H_mask(self):
         self.H *= self.H_mask
@@ -212,66 +300,6 @@ class SamplingNode(Node):
             self.H = self.H_mask / np.sum(self.H_mask)
         else:
             self.H /= H_sum
-
-    @staticmethod
-    def Phi(c: HiddenValue, eps: float, Q: np.ndarray, H: np.ndarray, verbose=False) -> Interval:
-        """
-        H: shape of (n, )
-        Q: shape of (n, 2)
-
-        H is a hidden state probability distribution.
-        Q represents a utility-belief-interval for each hidden state.
-        c is an index sampled from H.
-
-        Computes:
-
-        Phi(H) = union_{H' in N_epsilon(H)} phi(H')
-
-        where
-
-        N_epsilon(H) = {H' | ||H - H'||_1 <= epsilon}
-        Q_left = Q[:, 0]
-        Q_right = Q[:, 1]
-        phi(H') = union_{Q_left <= q <= Q_right} (q[c] - sum_i H'[i] * q[i])
-
-        Returns the interval Phi(H) as an Interval.
-        """
-        one_c = np.zeros_like(H)
-        one_c[c] = 1
-
-        output = np.zeros(2)
-        for index in (0, 1):
-            index_sign = 1 - 2 * index
-            H_prime = H.copy()
-            phi_partial_extreme = -Q[:, 1 - index]
-            phi_partial_extreme[c] = -Q[c, index]
-            index_ordering = np.argsort(phi_partial_extreme)
-
-            for direction in (-1, 1):
-                eps_limit = (1 - H_prime) if direction == index_sign else H_prime
-                remaining_eps = eps
-                for i in index_ordering[::direction]:
-                    eps_to_use = min(remaining_eps, eps_limit[i])
-                    H_prime[i] += index_sign * direction * eps_to_use
-                    remaining_eps -= eps_to_use
-                    if remaining_eps <= 0:
-                        break
-
-            assert np.isclose(np.sum(H_prime), 1), H_prime
-
-            q = Q[:, 1 - index].copy()
-            q[c] = Q[c, index]
-            output[index] = np.dot(one_c - H_prime, q)
-
-        if verbose:
-            print('*****')
-            print('Phi computation:')
-            print('H = %s' % H)
-            print('Q = %s' % Q)
-            print('c = %s' % c)
-            print('eps = %s' % eps)
-            print('Phi = %s' % output)
-        return output
 
     def eval_model(self, model: Model):
         if self.H is not None:
@@ -330,7 +358,6 @@ class SamplingNode(Node):
 
         return luck_adjusted_Q
 
-
     def visit(self, model: Model):
         if DEBUG:
             print(f'= Visiting {self}:')
@@ -374,7 +401,7 @@ class Tree:
     def get_visit_distribution(self, n: int) -> Dict[Action, float]:
         while self.root.N <= n:
             if DEBUG:
-                print(f'\n=============== visit tree: {tree_ids.index(id(self))}, owner: {self.tree_owner} N: {self.root.N}, root: {self.root} id: {id(self)}  ===============')
+                print(f'\n=============== visit tree: {tree_ids.index(id(self))}, owner: {self.tree_owner} N: {self.root.N}, root: {self.root} id: {id(self)}')
             self.root.visit(self.model)
             if self.root.N == 1:
                 continue
@@ -384,7 +411,7 @@ class Tree:
 
     def get_spawned_tree_action(self):
         if DEBUG:
-                print(f'\n=============== get action from spawn tree: {tree_ids.index(id(self))}, owner: {self.tree_owner} N: {self.root.N}, root: {self.root}, id: {id(self)}  ===============')
+                print(f'\n=============== get action from spawn tree: {tree_ids.index(id(self))}, owner: {self.tree_owner} N: {self.root.N}, root: {self.root}, id: {id(self)} ')
         while self.root.N < 1:
             self.root.visit(self.model)
         self.root.visit(self.model)
