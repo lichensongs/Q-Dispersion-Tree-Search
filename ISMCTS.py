@@ -57,16 +57,21 @@ class ActionNode(Node):
         self.n_mixed = 0
         self.n_pure = 0
 
+        self._expanded = False
+
     def __str__(self):
-        return f'Action({self.info_set}, N={self.N}, Q={self.Q}), V={self.V}'
+        return f'Action({self.info_set}, tree_owner={self.tree_owner}, N={self.N}, Q={self.Q}), V={self.V}'
 
     def eval_model(self, model: Model):
-        if self.P is not None:
+        if self.P is not None or self.terminal():
             # already evaluated
             return
+
         self.P, self.V, self.Vc = model.action_eval(self.tree_owner, self.info_set)
+        self.Q = to_interval(self.V)
 
     def expand(self, model: Model):
+        self._expanded = True
         if self.terminal():
             return
         self.eval_model(model)
@@ -112,7 +117,7 @@ class ActionNode(Node):
         P = self.P * mask
 
         s = np.sum(P)
-        assert s > 0
+        assert s > 0, (self.P, mask)
         return P / s
 
     def visit(self, model: Model):
@@ -126,7 +131,7 @@ class ActionNode(Node):
                 print(f'= end visit {self} hit terminal, return Q: {self.Q}')
             return self.Q
 
-        if self.P is None:
+        if not self._expanded:
             self.expand(model)
             if DEBUG:
                 print(f'- expanding {self}')
@@ -138,12 +143,13 @@ class ActionNode(Node):
         old_Q = self.Q
         if self.spawned_tree is not None:
             action = self.spawned_tree.get_spawned_tree_action()
+            if DEBUG:
+                print(f'- spawned tree action: {action}')
             child_Q = self.children[action].visit(model)
 
             self.Q = self.Q * (self.N - 1) / self.N + child_Q / self.N
 
             if DEBUG:
-                print(f'- spawned tree action: {action}')
                 print(f'- update Q to {self.Q} from {old_Q}')
                 print(f'= end visit {self}')
             return self.Q
@@ -177,8 +183,10 @@ class ActionNode(Node):
             self.children[action].visit(model)
 
             if DEBUG:
+                print(f'- E_mixed: {E_mixed}, E_pure: {E_pure}, n_mixed: {self.n_mixed}, n_pure: {self.n_pure}, Qc: {Qc}')
                 print(f'- update Q to {self.Q} from {old_Q}')
                 print(f'= end visit {self}')
+
 
 
 class SamplingNode(Node):

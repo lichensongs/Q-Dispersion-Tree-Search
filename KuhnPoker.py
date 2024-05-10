@@ -123,28 +123,21 @@ class  KuhnPokerModel(Model):
         # self._V_hidden_tensor = np.zeros((2, 2, 3))  # owner, prev_action, card
 
         self._V_tensor[0, 0, J] = -1
-        self._V_tensor[0, 0, Q] = +1
-        self._V_tensor[0, 0, K] = +1
+        self._V_tensor[0, 0, Q] = -1 # Alice's tree, [010], Q?
+        self._V_tensor[0, 0, K] = -1 # Alice's tree, [010], K?
 
         self._V_tensor[0, 1, J] = -1
-        self._V_tensor[0, 1, Q] = 2 * (p - 1) / (1 + p)
+        self._V_tensor[0, 1, Q] = 2 * (p - 1) / (1 + p) # Alice's tree, [011], Q?
         self._V_tensor[0, 1, K] = +2
 
-        self._V_tensor[1, 0, J] = -1 + p * (1 + 3*q) / 2
+        self._V_tensor[1, 0, J] = -1 + p * (1 - 3*q) / 2
         self._V_tensor[1, 0, Q] = 0
         self._V_tensor[1, 0, K] = 1 + q / 2
 
-        self._V_tensor[1, 1, :] = None  # N/A, we assume Alice checks
+        self._V_tensor[1, 1, J] = -1
+        self._V_tensor[1, 1, Q] = 1 - 3 * q # Bob's tree, [01], QJ
+        self._V_tensor[1, 1, K] = -2 # Bob's tree, [01], KJ
 
-        # self._V_hidden_tensor[0, 0] = None  # game has terminated if Bob checks
-
-        # self._V_hidden_tensor[0, 1, J] = -1
-        # self._V_hidden_tensor[0, 1, Q] = 2 * (p - 1) / (1 + p)
-        # self._V_hidden_tensor[0, 1, K] = +2
-
-        # self._V_hidden_tensor[1, 0, J] = -1 + p * (1 + 3*q) / 2
-        # self._V_hidden_tensor[1, 0, Q] = 0
-        # self._V_hidden_tensor[1, 0, K] = 1 + q / 2
 
     def action_eval(self, tree_owner: int, info_set: InfoSet) -> Tuple[PolicyArray, Value, ValueChildArray]:
         cp = info_set.get_current_player()
@@ -173,16 +166,19 @@ class  KuhnPokerModel(Model):
         H[card.value] = 0
         H /= np.sum(H)
 
+        x = info_set.action_history[-1]
+        y = card.value
+
         V = self._V_tensor[tree_owner][x][y]
         Vc = np.zeros(len(Card))
         return H, V, Vc
 
 
 if __name__ == '__main__':
-    info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
-    # info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
+    # info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
+    info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
     model = KuhnPokerModel(1/3, 1/3)
     root = ActionNode(info_set)
     mcts = Tree(model, root)
-    visit_dist = mcts.get_visit_distribution(1000)
+    visit_dist = mcts.get_visit_distribution(15)
     print(visit_dist)
