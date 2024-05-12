@@ -14,7 +14,6 @@ c_PUCT = 1.0
 
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
 
-tree_ids = []
 
 def to_interval(i: IntervalLike) -> Interval:
     if isinstance(i, Interval):
@@ -393,6 +392,8 @@ class SamplingNode(Node):
 
 
 class Tree:
+    next_id = 0
+
     def __init__(self, model: Model, root: ActionNode, eps=EPS):
         self.model = model
         self.root = root
@@ -401,22 +402,22 @@ class Tree:
         self.eps = eps
         self.root.eps = eps
 
-        if id(self) not in tree_ids:
-            tree_ids.append(id(self))
+        self.tree_id = Tree.next_id
+        Tree.next_id += 1
 
     def __str__(self):
-        return f'Tree(owner={self.tree_owner}, root={self.root})'
+        return f'Tree(id={self.tree_id}, owner={self.tree_owner}, root={self.root})'
 
     def get_visit_distribution(self, n: int) -> Dict[Action, float]:
         while self.root.N <= n:
-            logging.debug(f'\n======= visit tree: {tree_ids.index(id(self))}, owner: {self.tree_owner} N: {self.root.N}, root: {self.root} id: {id(self)}')
+            logging.debug(f'\n======= visit tree: {self}')
             self.root.visit(self.model)
 
         n_total = self.root.N - 1
         return {action: node.N / n_total for action, node in self.root.children.items()}
 
     def get_spawned_tree_action(self) -> ActionDistribution:
-        logging.debug(f'\n======= get action from spawn tree: {tree_ids.index(id(self))}, owner: {self.tree_owner} N: {self.root.N}, root: {self.root}, id: {id(self)} ')
+        logging.debug(f'\n======= get action from spawn tree: {self}')
 
         while self.root.N < 1:
             self.root.visit(self.model)
