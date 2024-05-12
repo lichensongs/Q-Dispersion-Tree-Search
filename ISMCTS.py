@@ -9,8 +9,11 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 import logging
 
-EPS = 0.05
-c_PUCT = 1.0
+
+class Constants:
+    EPS = 0.05
+    c_PUCT = 1.0
+
 
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
 
@@ -27,24 +30,9 @@ class VisitResult:
     action_distr: Optional[ActionDistribution] = None  # if action was mixed
 
 
-class Node(abc.ABC):
-    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, Q: IntervalLike=0):
-        self.info_set = info_set
-        self.cp = info_set.get_current_player()
-        self.game_outcome = info_set.get_game_outcome()
-        self.Q: Optional[Interval] = to_interval(Q)
-        self.N = 0
-        self.tree_owner = tree_owner
-
-    def terminal(self) -> bool:
-        return self.game_outcome is not None
-
-    @abc.abstractmethod
-    def visit(self, model: Model) -> VisitResult:
-        pass
-
+class LuckAdjuster:
     @staticmethod
-    def Phi(c: HiddenValue, eps: float, Q: np.ndarray, H: np.ndarray, verbose=False) -> Interval:
+    def Phi(c: HiddenValue, Q: np.ndarray, H: np.ndarray, verbose=False) -> Interval:
         """
         H: shape of (n, )
         Q: shape of (n, 2)
@@ -59,7 +47,7 @@ class Node(abc.ABC):
 
         where
 
-        N_epsilon(H) = {H' | ||H - H'||_1 <= epsilon}
+        N_epsilon(H) = {H' | ||H - H'||_1 <= EPS}
         Q_left = Q[:, 0]
         Q_right = Q[:, 1]
         phi(H') = union_{Q_left <= q <= Q_right} (q[c] - sum_i H'[i] * q[i])
@@ -79,7 +67,7 @@ class Node(abc.ABC):
 
             for direction in (-1, 1):
                 eps_limit = (1 - H_prime) if direction == index_sign else H_prime
-                remaining_eps = eps
+                remaining_eps = Constants.EPS
                 for i in index_ordering[::direction]:
                     eps_to_use = min(remaining_eps, eps_limit[i])
                     H_prime[i] += index_sign * direction * eps_to_use
@@ -99,22 +87,56 @@ class Node(abc.ABC):
             print('H = %s' % H)
             print('Q = %s' % Q)
             print('c = %s' % c)
-            print('eps = %s' % eps)
+            print('eps = %s' % Constants.EPS)
             print('Phi = %s' % output)
         return output
 
+    @staticmethod
+    def calc_luck_adjusted_Q(Qc: np.ndarray, Q_h: Interval, c: int, weights: np.ndarray) -> Interval:
+        luck_adjustment = LuckAdjuster.Phi(c, Qc, weights)
+        luck_adjusted_Q = np.array([Q_h[0] - luck_adjustment[1], Q_h[1] - luck_adjustment[0]])
+
+        logging.debug(f'-- calc luck adjusted Q:')
+        for q in Qc:
+            logging.debug(f'-- child_Qs: {q}')
+        logging.debug(f'-- luck_adjustment: {luck_adjustment}')
+
+        return luck_adjusted_Q
+
+
+class Node(abc.ABC):
+    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, Q: IntervalLike=0):
+        self.info_set = info_set
+        self.cp = info_set.get_current_player()
+        self.game_outcome = info_set.get_game_outcome()
+        self.Q: Optional[Interval] = to_interval(Q)
+        self.N = 0
+        self.tree_owner = tree_owner
+
+    def terminal(self) -> bool:
+        return self.game_outcome is not None
+
+    @abc.abstractmethod
+    def visit(self, model: Model) -> VisitResult:
+        pass
+
+
+@dataclass
+class Edge:
+    index: int
+    node: Node
+
+
 class ActionNode(Node):
-    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0, spawned_tree=None, eps=EPS):
+    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0):
         super().__init__(info_set, tree_owner=tree_owner, Q=initQ)
 
         self.actions = info_set.get_actions()
-        self.children: Dict[Action, Node] = {}
+        self.children: Dict[Action, Edge] = {}
         self.P = None
         self.V = None  #self.game_outcome if self.terminal() else None
         self.Vc = None
-        self.spawned_tree = spawned_tree
-        self.eps = eps
-        # self.recent_action = None
+        self.spawned_tree: Optional[Tree] = None
 
         if self.terminal():
             self.Q = to_interval(self.game_outcome[self.tree_owner])
@@ -145,11 +167,14 @@ class ActionNode(Node):
         for a in self.actions:
             info_set = self.info_set.apply(a)
             if self.cp != info_set.get_current_player() and info_set.has_hidden_info():
-                self.children[a] = SamplingNode(info_set, tree_owner=self.tree_owner, eps=self.eps, initQ=self.Vc[a])
+                node = SamplingNode(info_set, tree_owner=self.tree_owner, initQ=self.Vc[a])
+                self.children[a] = Edge(len(self.children), node)
             else:
-                self.children[a] = ActionNode(info_set, tree_owner=self.tree_owner, eps=self.eps, initQ=self.Vc[a])
+                node = ActionNode(info_set, tree_owner=self.tree_owner, initQ=self.Vc[a])
+                self.children[a] = Edge(len(self.children), node)
+
             if CHEAT:
-                self.children[a].eval_model(model)
+                node.eval_model(model)
 
         self.Q = to_interval(self.V)
 
@@ -159,12 +184,14 @@ class ActionNode(Node):
         Q = np.zeros((c, 2))  # mins and maxes
         P = self.P
         N = np.zeros(c)
-        for i, (a, child) in enumerate(self.children.items()):
+        for a, edge in self.children.items():
+            i = edge.index
+            child = edge.node
             actions[i] = a
             Q[i] = child.Q
             N[i] = child.N
 
-        PUCT = c_PUCT * P * np.sqrt(np.sum(N)) / (N + 1)
+        PUCT = Constants.c_PUCT * P * np.sqrt(np.sum(N)) / (N + 1)
         PUCT = Q + PUCT[:, np.newaxis]
 
         # check for pure case
@@ -200,23 +227,27 @@ class ActionNode(Node):
             self.expand(model)
 
             logging.debug(f'- expanding {self}')
-            for k, child in self.children.items():
-                logging.debug(f'  - {k}: {child}')
+            for k, edge in self.children.items():
+                logging.debug(f'  - {k}: {edge.node}')
             logging.debug(f'= end visit {self} expand, return self.Q: {self.Q}')
 
             return VisitResult(Q=self.Q)
 
         old_Q = self.Q
         if self.spawned_tree is not None:
-            action_distr = self.spawned_tree.get_spawned_tree_action()
+            action_distr = self.spawned_tree.get_spawned_tree_action_distr()
             action = np.random.choice(len(self.P), p=action_distr)
 
             logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
 
-            result = self.children[action].visit(model)
+            edge = self.children[action]
+            c = edge.index
+            child = edge.node
+            result = child.visit(model)
             child_Q = result.Q
 
-            luck_adjusted_Q = self.calc_luck_adjusted_Q(child_Q, action, action_distr)
+            Qc = np.array([edge.node.Q for edge in self.children.values()])
+            luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, child_Q, c, action_distr)
 
             old_Q = self.Q
             self.Q = self.Q * (self.N - 1) / self.N + luck_adjusted_Q / self.N
@@ -255,7 +286,7 @@ class ActionNode(Node):
 
             action = self.actions[action_index]
             self.recent_action = action
-            self.children[action].visit(model)
+            self.children[action].node.visit(model)
 
             logging.debug(f'- E_mixed: {E_mixed}, E_pure: {E_pure}, n_mixed: {self.n_mixed}, n_pure: {self.n_pure}, cQc[0]: {Qc[0]}, Qc[1]: {Qc[1]}')
             logging.debug(f'- update Q to {self.Q} from {old_Q}')
@@ -263,38 +294,17 @@ class ActionNode(Node):
 
             return VisitResult(Q=self.Q, action_distr=mixing_distr)
 
-    def calc_luck_adjusted_Q(self, Q_h: Interval, h: int, weights) -> Interval:
-        child_Qs = np.zeros((len(self.children), 2))
-        for i, (_, child) in enumerate(self.children.items()):
-            child_Qs[i] = child.Q
-        child_Qs = np.array(child_Qs)
-
-        ix = list(self.children.keys()).index(h)
-
-        # this is the only difference between ActionNode and SamplingNode. ActionNode us
-        luck_adjustment = self.Phi(ix, self.eps, child_Qs, weights)
-
-        luck_adjusted_Q = np.array([Q_h[0] - luck_adjustment[1], Q_h[1] - luck_adjustment[0]])
-
-        logging.debug(f'-- calc luck adjusted Q:')
-        for q in child_Qs:
-            logging.debug(f'-- child_Qs: {q}')
-        logging.debug(f'-- luck_adjustment: {luck_adjustment}')
-
-        return luck_adjusted_Q
-
 
 class SamplingNode(Node):
-    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0, eps=EPS):
+    def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0):
         super().__init__(info_set, tree_owner, Q=initQ)
         self.H = None
         self.V = None
         self.Vc = None
         self.H_mask = info_set.get_H_mask()
         assert np.any(self.H_mask)
-        self.children: Dict[HiddenValue, Node] = {}
+        self.children: Dict[HiddenValue, Edge] = {}
         self._expanded = False
-        self.eps = eps
 
     def __str__(self):
         return f'Hidden({self.info_set}, tree_owner={self.tree_owner}, N={self.N}, Q={self.Q}), V={self.V}'
@@ -323,16 +333,19 @@ class SamplingNode(Node):
             info_set = self.info_set.instantiate_hidden_state(h)
             if info_set.has_hidden_info():
                 assert self.cp == info_set.get_current_player()
-                self.children[h] = SamplingNode(info_set, tree_owner=self.tree_owner, eps=self.eps, initQ=self.Vc[h])
+                node = SamplingNode(info_set, tree_owner=self.tree_owner, initQ=self.Vc[h])
+                self.children[h] = Edge(len(self.children), node)
             else:
-                self.children[h] = ActionNode(info_set, tree_owner=self.tree_owner, eps=self.eps, initQ=self.Vc[h])
-                self.children[h].spawned_tree = self.create_spawned_tree(info_set, model)
-            if CHEAT:
-                self.children[h].eval_model(model)
+                node = ActionNode(info_set, tree_owner=self.tree_owner, initQ=self.Vc[h])
+                node.spawned_tree = self.create_spawned_tree(info_set, model)
+                self.children[h] = Edge(len(self.children), node)
 
-            logging.debug(f'  - {h}: {self.children[h]}')
-            if self.children[h].spawned_tree is not None:
-                logging.debug(f'  - spawned tree: {self.children[h].spawned_tree}')
+            if CHEAT:
+                node.eval_model(model)
+
+            logging.debug(f'  - {h}: {node}')
+            if node.spawned_tree is not None:
+                logging.debug(f'  - spawned tree: {node.spawned_tree}')
 
         self._expanded = True
 
@@ -344,25 +357,8 @@ class SamplingNode(Node):
                 info_set.cards[i] = None
 
         root = ActionNode(info_set)
-        spawned_tree = Tree(model, root, self.eps)
+        spawned_tree = Tree(model, root)
         return spawned_tree
-
-    def calc_luck_adjusted_Q(self, Q_h: Interval, h) -> Interval:
-        child_Qs = np.zeros((len(self.children), 2))
-        for i, (_, child) in enumerate(self.children.items()):
-            child_Qs[i] = child.Q
-        child_Qs = np.array(child_Qs)
-
-        ix = list(self.children.keys()).index(h)
-        luck_adjustment = self.Phi(ix, self.eps, child_Qs, self.H[self.H_mask != 0])
-        luck_adjusted_Q = np.array([Q_h[0] - luck_adjustment[1], Q_h[1] - luck_adjustment[0]])
-
-        logging.debug(f'-- calc luck adjusted Q:')
-        for q in child_Qs:
-            logging.debug(f'-- child_Qs: {q}')
-        logging.debug(f'-- luck_adjustment: {luck_adjustment}')
-
-        return luck_adjusted_Q
 
     def visit(self, model: Model) -> VisitResult:
         logging.debug(f'= Visiting {self}:')
@@ -378,9 +374,15 @@ class SamplingNode(Node):
 
         logging.debug(f'- sampling hidden state {h} from {self.H}')
 
-        result = self.children[h].visit(model)
+        edge = self.children[h]
+        c = edge.index
+        child = edge.node
+        result = child.visit(model)
         Q_h = result.Q
-        luck_adjusted_Q = self.calc_luck_adjusted_Q(Q_h, h)
+
+        h_keys = np.array(list(self.children.keys()))
+        Qc = np.array([edge.node.Q for edge in self.children.values()])
+        luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, Q_h, c, self.H[h_keys])
 
         old_Q = self.Q
         self.Q = self.Q * (self.N - 1) / self.N + luck_adjusted_Q / self.N
@@ -394,13 +396,11 @@ class SamplingNode(Node):
 class Tree:
     next_id = 0
 
-    def __init__(self, model: Model, root: ActionNode, eps=EPS):
+    def __init__(self, model: Model, root: ActionNode):
         self.model = model
         self.root = root
         self.tree_owner = root.info_set.get_current_player()
         self.root.tree_owner = self.tree_owner
-        self.eps = eps
-        self.root.eps = eps
 
         self.tree_id = Tree.next_id
         Tree.next_id += 1
@@ -414,10 +414,10 @@ class Tree:
             self.root.visit(self.model)
 
         n_total = self.root.N - 1
-        return {action: node.N / n_total for action, node in self.root.children.items()}
+        return {action: edge.node.N / n_total for action, edge in self.root.children.items()}
 
-    def get_spawned_tree_action(self) -> ActionDistribution:
-        logging.debug(f'\n======= get action from spawn tree: {self}')
+    def get_spawned_tree_action_distr(self) -> ActionDistribution:
+        logging.debug(f'\n======= get action distr from spawn tree: {self}')
 
         while self.root.N < 1:
             self.root.visit(self.model)

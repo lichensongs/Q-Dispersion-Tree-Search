@@ -1,5 +1,5 @@
 from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray
-from ISMCTS import ActionNode, Tree
+from ISMCTS import ActionNode, Constants, Tree
 from info_set import InfoSet
 from model import Model
 
@@ -190,6 +190,9 @@ if __name__ == '__main__':
         filemode='w'
     )
 
+    if args.eps is not None:
+        Constants.EPS = args.eps
+
     if args.player == 'Alice':
         info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
     elif args.player == 'Bob':
@@ -199,6 +202,6 @@ if __name__ == '__main__':
 
     model = KuhnPokerModel(1/3, 1/3)
     root = ActionNode(info_set)
-    mcts = Tree(model, root, eps=args.eps)
+    mcts = Tree(model, root)
     visit_dist = mcts.get_visit_distribution(args.iter)
     print(visit_dist)
