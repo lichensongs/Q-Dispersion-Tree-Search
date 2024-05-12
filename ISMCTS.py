@@ -171,6 +171,8 @@ class ActionNode(Node):
         self.Q = to_interval(self.V)
 
     def expand(self, model: Model):
+        logging.debug(f'- expanding {self}')
+
         self._expanded = True
         if self.terminal():
             return
@@ -186,6 +188,7 @@ class ActionNode(Node):
 
             if CHEAT:
                 node.eval_model(model)
+            logging.debug(f'  - {a}: {node}')
 
         self.Q = to_interval(self.V)
 
@@ -225,9 +228,7 @@ class ActionNode(Node):
         return P / s
 
     def visit(self, model: Model) -> VisitResult:
-
         logging.debug(f'= Visiting {self}:')
-
         self.N += 1
 
         if self.terminal():
@@ -236,74 +237,72 @@ class ActionNode(Node):
 
         if not self._expanded:
             self.expand(model)
-
-            logging.debug(f'- expanding {self}')
-            for k, edge in self.children.items():
-                logging.debug(f'  - {k}: {edge.node}')
             logging.debug(f'= end visit {self} expand, return self.Q: {self.Q}')
-
             return VisitResult(Q=self.Q)
+
+        if self.spawned_tree is not None:
+            return self.spawned_visit(model)
+        else:
+            return self.unspawned_visit(model)
+
+    def spawned_visit(self, model: Model) -> VisitResult:
+        action_distr = self.spawned_tree.get_spawned_tree_action_distr()
+        action = np.random.choice(len(self.P), p=action_distr)
+
+        logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
+
+        edge = self.children[action]
+        c = edge.index
+        child = edge.node
+        result = child.visit(model)
+        child_Q = result.Q
+
+        Qc = np.array([edge.node.Q for edge in self.children.values()])
+        luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, child_Q, c, action_distr)
 
         old_Q = self.Q
-        if self.spawned_tree is not None:
-            action_distr = self.spawned_tree.get_spawned_tree_action_distr()
-            action = np.random.choice(len(self.P), p=action_distr)
+        self.Q = self.Q * (self.N - 1) / self.N + luck_adjusted_Q / self.N
 
-            logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
+        logging.debug(f'- child_Q: {child_Q}, luck_adjusted: {luck_adjusted_Q}')
+        logging.debug(f'- update Q to {self.Q} from {old_Q}')
+        logging.debug(f'= end visit {self}')
 
-            edge = self.children[action]
-            c = edge.index
-            child = edge.node
-            result = child.visit(model)
-            child_Q = result.Q
+        return VisitResult(Q=self.Q)
 
-            Qc = np.array([edge.node.Q for edge in self.children.values()])
-            luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, child_Q, c, action_distr)
+    def unspawned_visit(self, model: Model) -> VisitResult:
+        old_Q = self.Q
+        mixing_distr = None
+        Qc, action_indices = self.computePUCT()
+        if len(action_indices) == 1:  # pure case
+            self.n_pure += 1
+            action_index = action_indices[0]
+            pure_distr = np.zeros(len(self.P))
+            pure_distr[action_index] = 1
+            self.PURE = (self.PURE * (self.n_pure-1) + pure_distr) / self.n_pure
 
-            old_Q = self.Q
-            self.Q = self.Q * (self.N - 1) / self.N + luck_adjusted_Q / self.N
+            logging.debug(f'- pure action {self.PURE}, action_index: {action_index}')
+        else:  # mixed case
+            self.n_mixed += 1
+            mixing_distr = self.get_mixing_distribution(action_indices)
+            action_index = np.random.choice(len(self.P), p=mixing_distr)
+            self.MIXED = (self.MIXED * (self.n_mixed-1) + mixing_distr) / self.n_mixed
 
-            logging.debug(f'- child_Q: {child_Q}, luck_adjusted: {luck_adjusted_Q}')
-            logging.debug(f'- update Q to {self.Q} from {old_Q}')
-            logging.debug(f'= end visit {self}')
+            logging.debug(f'- mixed action {self.MIXED}, action_index: {action_index}')
 
-            return VisitResult(Q=self.Q)
+        na = np.newaxis
+        E_mixed = np.sum(Qc * self.MIXED[:, na], axis=0)
+        E_pure = np.sum(Qc * self.PURE[:, na], axis=0)
+        self.Q = (self.n_mixed * E_mixed + self.n_pure * E_pure) / (self.n_mixed + self.n_pure)
+        assert self.Q.shape == (2, )
 
-        else:
-            mixing_distr = None
-            Qc, action_indices = self.computePUCT()
-            if len(action_indices) == 1:  # pure case
-                self.n_pure += 1
-                action_index = action_indices[0]
-                pure_distr = np.zeros(len(self.P))
-                pure_distr[action_index] = 1
-                self.PURE = (self.PURE * (self.n_pure-1) + pure_distr) / self.n_pure
+        action = self.actions[action_index]
+        self.children[action].node.visit(model)
 
-                logging.debug(f'- pure action {self.PURE}, action_index: {action_index}')
+        logging.debug(f'- E_mixed: {E_mixed}, E_pure: {E_pure}, n_mixed: {self.n_mixed}, n_pure: {self.n_pure}, cQc[0]: {Qc[0]}, Qc[1]: {Qc[1]}')
+        logging.debug(f'- update Q to {self.Q} from {old_Q}')
+        logging.debug(f'= end visit {self}')
 
-            else:  # mixed case
-                self.n_mixed += 1
-                mixing_distr = self.get_mixing_distribution(action_indices)
-                action_index = np.random.choice(len(self.P), p=mixing_distr)
-                self.MIXED = (self.MIXED * (self.n_mixed-1) + mixing_distr) / self.n_mixed
-
-                logging.debug(f'- mixed action {self.MIXED}, action_index: {action_index}')
-
-            na = np.newaxis
-            E_mixed = np.sum(Qc * self.MIXED[:, na], axis=0)
-            E_pure = np.sum(Qc * self.PURE[:, na], axis=0)
-            self.Q = (self.n_mixed * E_mixed + self.n_pure * E_pure) / (self.n_mixed + self.n_pure)
-            assert self.Q.shape == (2, )
-
-            action = self.actions[action_index]
-            self.recent_action = action
-            self.children[action].node.visit(model)
-
-            logging.debug(f'- E_mixed: {E_mixed}, E_pure: {E_pure}, n_mixed: {self.n_mixed}, n_pure: {self.n_pure}, cQc[0]: {Qc[0]}, Qc[1]: {Qc[1]}')
-            logging.debug(f'- update Q to {self.Q} from {old_Q}')
-            logging.debug(f'= end visit {self}')
-
-            return VisitResult(Q=self.Q, action_distr=mixing_distr)
+        return VisitResult(Q=self.Q, action_distr=mixing_distr)
 
 
 class SamplingNode(Node):
