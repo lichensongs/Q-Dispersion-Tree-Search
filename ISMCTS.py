@@ -123,6 +123,14 @@ class Node(abc.ABC):
         self.Q: Optional[Interval] = to_interval(Q)
         self.N = 0
         self.tree_owner = tree_owner
+        self.children: Dict[int, Edge] = {}
+
+    def add_child(self, key: int, node: 'Node'):
+        self.children[key] = Edge(len(self.children), node)
+        logging.debug(f'  - {key}: {node}')
+
+    def get_Qc(self) -> np.ndarray:
+        return np.array([edge.node.Q for edge in self.children.values()])
 
     def terminal(self) -> bool:
         return self.game_outcome is not None
@@ -143,7 +151,6 @@ class ActionNode(Node):
         super().__init__(info_set, tree_owner=tree_owner, Q=initQ)
 
         self.actions = info_set.get_actions()
-        self.children: Dict[Action, Edge] = {}
         self.P = None
         self.V = None  #self.game_outcome if self.terminal() else None
         self.Vc = None
@@ -181,14 +188,12 @@ class ActionNode(Node):
             info_set = self.info_set.apply(a)
             if self.cp != info_set.get_current_player() and info_set.has_hidden_info():
                 node = SamplingNode(info_set, tree_owner=self.tree_owner, initQ=self.Vc[a])
-                self.children[a] = Edge(len(self.children), node)
             else:
                 node = ActionNode(info_set, tree_owner=self.tree_owner, initQ=self.Vc[a])
-                self.children[a] = Edge(len(self.children), node)
 
+            self.add_child(a, node)
             if CHEAT:
                 node.eval_model(model)
-            logging.debug(f'  - {a}: {node}')
 
         self.Q = to_interval(self.V)
 
@@ -253,7 +258,7 @@ class ActionNode(Node):
 
         logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
 
-        Qc = np.array([edge.node.Q for edge in self.children.values()])
+        Qc = self.get_Qc()
 
         edge = self.children[action]
         c = edge.index
@@ -317,7 +322,6 @@ class SamplingNode(Node):
         self.Vc = None
         self.H_mask = info_set.get_H_mask()
         assert np.any(self.H_mask)
-        self.children: Dict[HiddenValue, Edge] = {}
         self._expanded = False
 
     def __str__(self):
@@ -348,12 +352,11 @@ class SamplingNode(Node):
             if info_set.has_hidden_info():
                 assert self.cp == info_set.get_current_player()
                 node = SamplingNode(info_set, tree_owner=self.tree_owner, initQ=self.Vc[h])
-                self.children[h] = Edge(len(self.children), node)
             else:
                 node = ActionNode(info_set, tree_owner=self.tree_owner, initQ=self.Vc[h])
                 node.spawned_tree = self.create_spawned_tree(info_set, model)
-                self.children[h] = Edge(len(self.children), node)
 
+            self.add_child(h, node)
             if CHEAT:
                 node.eval_model(model)
 
@@ -388,7 +391,7 @@ class SamplingNode(Node):
 
         logging.debug(f'- sampling hidden state {h} from {self.H}')
 
-        Qc = np.array([edge.node.Q for edge in self.children.values()])
+        Qc = self.get_Qc()
 
         edge = self.children[h]
         c = edge.index
