@@ -246,7 +246,9 @@ class ActionNode(Node):
             return self.unspawned_visit(model)
 
     def spawned_visit(self, model: Model) -> VisitResult:
-        action_distr = self.spawned_tree.get_spawned_tree_action_distr()
+        logging.debug(f'\n======= get action distr from spawn tree: {self.spawned_tree}')
+        result = self.spawned_tree.root.visit(model)
+        action_distr = result.action_distr
         action = np.random.choice(len(self.P), p=action_distr)
 
         logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
@@ -429,12 +431,3 @@ class Tree:
 
         n_total = self.root.N - 1
         return {action: edge.node.N / n_total for action, edge in self.root.children.items()}
-
-    def get_spawned_tree_action_distr(self) -> ActionDistribution:
-        logging.debug(f'\n======= get action distr from spawn tree: {self}')
-
-        while self.root.N < 1:
-            self.root.visit(self.model)
-
-        result = self.root.visit(self.model)
-        return result.action_distr
