@@ -251,13 +251,15 @@ class ActionNode(Node):
 
         logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
 
+        Qc = np.array([edge.node.Q for edge in self.children.values()])
+
         edge = self.children[action]
         c = edge.index
         child = edge.node
+
         result = child.visit(model)
         child_Q = result.Q
 
-        Qc = np.array([edge.node.Q for edge in self.children.values()])
         luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, child_Q, c, action_distr)
 
         old_Q = self.Q
@@ -384,14 +386,16 @@ class SamplingNode(Node):
 
         logging.debug(f'- sampling hidden state {h} from {self.H}')
 
+        Qc = np.array([edge.node.Q for edge in self.children.values()])
+
         edge = self.children[h]
         c = edge.index
         child = edge.node
+
         result = child.visit(model)
         Q_h = result.Q
 
         h_keys = np.array(list(self.children.keys()))
-        Qc = np.array([edge.node.Q for edge in self.children.values()])
         luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, Q_h, c, self.H[h_keys])
 
         old_Q = self.Q
