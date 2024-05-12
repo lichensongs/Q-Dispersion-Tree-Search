@@ -44,7 +44,7 @@ class LuckAdjuster:
 
         Computes:
 
-        Phi(H) = union_{p' in N(H)} phi(p')
+        Phi(p) = union_{p' in N(p)} phi(p')
 
         where
 
@@ -53,7 +53,7 @@ class LuckAdjuster:
         Q_right = Q[:, 1]
         phi(p') = union_{Q_left <= q <= Q_right} (q[c] - sum_i p'[i] * q[i])
 
-        Returns the set Phi(H) as an Interval.
+        Returns the set Phi(p) as an Interval.
         """
         one_c = np.zeros_like(p)
         one_c[c] = 1
