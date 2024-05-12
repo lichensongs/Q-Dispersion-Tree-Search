@@ -10,3 +10,4 @@ Interval = np.ndarray  # shape of (2,)
 IntervalLike = Interval | float
 HiddenValue = int
 Action = int
+ActionDistribution = np.ndarray
