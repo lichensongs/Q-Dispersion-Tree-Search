@@ -32,59 +32,60 @@ class VisitResult:
 
 class LuckAdjuster:
     @staticmethod
-    def Phi(c: HiddenValue, Q: np.ndarray, H: np.ndarray, verbose=False) -> Interval:
+    def Phi(c: int, Q: np.ndarray, p: np.ndarray, verbose=False) -> Interval:
         """
-        H: shape of (n, )
+        p: shape of (n, )
         Q: shape of (n, 2)
+        c: int in range[0, n-1]
 
-        H is a hidden state probability distribution.
-        Q represents a utility-belief-interval for each hidden state.
-        c is an index sampled from H.
+        p is a probability distribution over n elements.
+        Q represents a utility-belief-interval for each of the n elements.
+        c is an index sampled from p.
 
         Computes:
 
-        Phi(H) = union_{H' in N_epsilon(H)} phi(H')
+        Phi(H) = union_{p' in N(H)} phi(p')
 
         where
 
-        N_epsilon(H) = {H' | ||H - H'||_1 <= EPS}
+        N(p) = {p' | ||p - p'||_1 <= EPS}
         Q_left = Q[:, 0]
         Q_right = Q[:, 1]
-        phi(H') = union_{Q_left <= q <= Q_right} (q[c] - sum_i H'[i] * q[i])
+        phi(p') = union_{Q_left <= q <= Q_right} (q[c] - sum_i p'[i] * q[i])
 
-        Returns the interval Phi(H) as an Interval.
+        Returns the set Phi(H) as an Interval.
         """
-        one_c = np.zeros_like(H)
+        one_c = np.zeros_like(p)
         one_c[c] = 1
 
         output = np.zeros(2)
         for index in (0, 1):
             index_sign = 1 - 2 * index
-            H_prime = H.copy()
+            p_prime = p.copy()
             phi_partial_extreme = -Q[:, 1 - index]
             phi_partial_extreme[c] = -Q[c, index]
             index_ordering = np.argsort(phi_partial_extreme)
 
             for direction in (-1, 1):
-                eps_limit = (1 - H_prime) if direction == index_sign else H_prime
+                eps_limit = (1 - p_prime) if direction == index_sign else p_prime
                 remaining_eps = Constants.EPS
                 for i in index_ordering[::direction]:
                     eps_to_use = min(remaining_eps, eps_limit[i])
-                    H_prime[i] += index_sign * direction * eps_to_use
+                    p_prime[i] += index_sign * direction * eps_to_use
                     remaining_eps -= eps_to_use
                     if remaining_eps <= 0:
                         break
 
-            assert np.isclose(np.sum(H_prime), 1), H_prime
+            assert np.isclose(np.sum(p_prime), 1), p_prime
 
             q = Q[:, 1 - index].copy()
             q[c] = Q[c, index]
-            output[index] = np.dot(one_c - H_prime, q)
+            output[index] = np.dot(one_c - p_prime, q)
 
         if verbose:
             print('*****')
             print('Phi computation:')
-            print('H = %s' % H)
+            print('p = %s' % p)
             print('Q = %s' % Q)
             print('c = %s' % c)
             print('eps = %s' % Constants.EPS)
@@ -92,9 +93,19 @@ class LuckAdjuster:
         return output
 
     @staticmethod
-    def calc_luck_adjusted_Q(Qc: np.ndarray, Q_h: Interval, c: int, weights: np.ndarray) -> Interval:
-        luck_adjustment = LuckAdjuster.Phi(c, Qc, weights)
-        luck_adjusted_Q = np.array([Q_h[0] - luck_adjustment[1], Q_h[1] - luck_adjustment[0]])
+    def calc_luck_adjusted_Q(Qc: np.ndarray, Q: Interval, c: int, p: np.ndarray) -> Interval:
+        """
+        Qc: shape of (n, 2)
+        c: int in range[0, n-1]
+        p: shape of (n, )
+
+        We have a list of n elements, with associated probability distribution p and
+        utility-belief-intervals Qc. We sampled index c from p.
+
+        Adjusts Q based on how lucky we were to sample c, based on p and Qc.
+        """
+        luck_adjustment = LuckAdjuster.Phi(c, Qc, p)
+        luck_adjusted_Q = np.array([Q[0] - luck_adjustment[1], Q[1] - luck_adjustment[0]])
 
         logging.debug(f'-- calc luck adjusted Q:')
         for q in Qc:
