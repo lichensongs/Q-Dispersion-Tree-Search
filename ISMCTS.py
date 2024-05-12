@@ -263,7 +263,7 @@ class ActionNode(Node):
         luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, child_Q, c, action_distr)
 
         old_Q = self.Q
-        self.Q = self.Q * (self.N - 1) / self.N + luck_adjusted_Q / self.N
+        self.Q = (self.Q * (self.N - 1) + luck_adjusted_Q) / self.N
 
         logging.debug(f'- child_Q: {child_Q}, luck_adjusted: {luck_adjusted_Q}')
         logging.debug(f'- update Q to {self.Q} from {old_Q}')
@@ -399,7 +399,7 @@ class SamplingNode(Node):
         luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, Q_h, c, self.H[h_keys])
 
         old_Q = self.Q
-        self.Q = self.Q * (self.N - 1) / self.N + luck_adjusted_Q / self.N
+        self.Q = (self.Q * (self.N - 1) + luck_adjusted_Q) / self.N
 
         logging.debug(f'- Q_h: {Q_h}, luck_adjusted: {luck_adjusted_Q}')
         logging.debug(f'- update Q to {self.Q} from {old_Q}')
