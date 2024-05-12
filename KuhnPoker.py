@@ -7,7 +7,8 @@ import numpy as np
 
 from enum import Enum
 from typing import List, Optional, Tuple
-
+import argparse
+import logging
 
 PASS = 0
 ADD_CHIP = 1
@@ -175,10 +176,29 @@ class  KuhnPokerModel(Model):
 
 
 if __name__ == '__main__':
-    # info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
-    info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action='store_true', help="Enable debug logging")
+    parser.add_argument("--player", type=str, help="Alice or Bob")
+    parser.add_argument("--iter", type=int, help="Number of iterations")
+    parser.add_argument("--eps", type=float, help="Range parameter for Q-value uncertainty")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format="%(levelname)s - %(asctime)s: %(message)s",
+        filename="kuhn_poker.log",
+        filemode='w'
+    )
+
+    if args.player == 'Alice':
+        info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
+    elif args.player == 'Bob':
+        info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
+    else:
+        raise ValueError(f"Invalid player: {args.player}")
+
     model = KuhnPokerModel(1/3, 1/3)
     root = ActionNode(info_set)
-    mcts = Tree(model, root)
-    visit_dist = mcts.get_visit_distribution(1000)
+    mcts = Tree(model, root, eps=args.eps)
+    visit_dist = mcts.get_visit_distribution(args.iter)
     print(visit_dist)
