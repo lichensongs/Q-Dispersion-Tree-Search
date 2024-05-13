@@ -252,6 +252,8 @@ class ActionNode(Node):
 
     def spawned_visit(self, model: Model) -> VisitResult:
         logging.debug(f'\n======= get action distr from spawn tree: {self.spawned_tree}')
+        if self.spawned_tree.root.N == 0:
+            self.spawned_tree.root.visit(model)
         result = self.spawned_tree.root.visit(model)
         action_distr = result.action_distr
         action = np.random.choice(len(self.P), p=action_distr)
