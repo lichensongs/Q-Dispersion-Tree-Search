@@ -181,6 +181,7 @@ if __name__ == '__main__':
     parser.add_argument("--player", type=str, help="Alice or Bob")
     parser.add_argument("--iter", type=int, help="Number of iterations")
     parser.add_argument("--eps", type=float, help="Range parameter for Q-value uncertainty")
+    parser.add_argument("--seed", type=int, help="Random seed")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -192,6 +193,9 @@ if __name__ == '__main__':
 
     if args.eps is not None:
         Constants.EPS = args.eps
+
+    if args.seed is not None:
+        np.random.seed(args.seed)
 
     if args.player == 'Alice':
         info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
