@@ -168,7 +168,7 @@ class ActionNode(Node):
         self._expanded = False
 
     def __str__(self):
-        return f'Action({self.info_set}, tree_owner={self.tree_owner}, N={self.N}, Q={self.Q}), V={self.V}'
+        return f'Action({self.info_set}, tree_owner={self.tree_owner}, N={self.N}, Q={self.Q}, V={self.V})'
 
     def eval_model(self, model: Model):
         if self.P is not None or self.terminal():
@@ -252,7 +252,7 @@ class ActionNode(Node):
             return self.unspawned_visit(model)
 
     def spawned_visit(self, model: Model) -> VisitResult:
-        logging.debug(f'\n======= get action distr from spawn tree: {self.spawned_tree}')
+        logging.debug(f'======= get action distr from spawn tree: {self.spawned_tree}')
         if self.spawned_tree.root.N == 0:
             self.spawned_tree.root.visit(model)
         result = self.spawned_tree.root.visit(model)
@@ -436,7 +436,7 @@ class Tree:
 
     def get_visit_distribution(self, n: int) -> Dict[Action, float]:
         while self.root.N <= n:
-            logging.debug(f'\n======= visit tree: {self}')
+            logging.debug(f'======= visit tree: {self}')
             self.root.visit(self.model)
 
         n_total = self.root.N - 1

@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
-        format="%(levelname)s - %(asctime)s: %(message)s",
+        format="%(message)s",
         filename="kuhn_poker.log",
         filemode='w'
     )
