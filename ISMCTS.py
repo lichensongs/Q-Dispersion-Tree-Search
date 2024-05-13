@@ -27,6 +27,7 @@ def to_interval(i: IntervalLike) -> Interval:
 @dataclass
 class VisitResult:
     Q: Interval
+    action: Optional[Action] = None
     action_distr: Optional[ActionDistribution] = None  # if action was mixed
 
 
@@ -255,30 +256,37 @@ class ActionNode(Node):
         if self.spawned_tree.root.N == 0:
             self.spawned_tree.root.visit(model)
         result = self.spawned_tree.root.visit(model)
+        action = result.action
         action_distr = result.action_distr
-        action = np.random.choice(len(self.P), p=action_distr)
-
-        logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
-
-        Qc = self.get_Qc()
 
         edge = self.children[action]
         c = edge.index
         child = edge.node
 
-        result = child.visit(model)
-        child_Q = result.Q
+        if action_distr is None:
+            # pure case
+            result = child.visit(model)
+            child_Q = result.Q
+            self.Q = (self.Q * (self.N - 1) + child_Q) / self.N
+            return VisitResult(Q=child_Q, action=action)
+        else:
+            Qc = self.get_Qc()
 
-        luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, child_Q, c, action_distr)
+            logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
 
-        old_Q = self.Q
-        self.Q = (self.Q * (self.N - 1) + luck_adjusted_Q) / self.N
+            result = child.visit(model)
+            child_Q = result.Q
 
-        logging.debug(f'- child_Q: {child_Q}, luck_adjusted: {luck_adjusted_Q}')
-        logging.debug(f'- update Q to {self.Q} from {old_Q}')
-        logging.debug(f'= end visit {self}')
+            luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, child_Q, c, action_distr)
 
-        return VisitResult(Q=self.Q)
+            old_Q = self.Q
+            self.Q = (self.Q * (self.N - 1) + luck_adjusted_Q) / self.N
+
+            logging.debug(f'- child_Q: {child_Q}, luck_adjusted: {luck_adjusted_Q}')
+            logging.debug(f'- update Q to {self.Q} from {old_Q}')
+            logging.debug(f'= end visit {self}')
+
+            return VisitResult(Q=luck_adjusted_Q, action=action, action_distr=action_distr)
 
     def unspawned_visit(self, model: Model) -> VisitResult:
         old_Q = self.Q
@@ -307,13 +315,13 @@ class ActionNode(Node):
         assert self.Q.shape == (2, )
 
         action = self.actions[action_index]
-        self.children[action].node.visit(model)
+        result = self.children[action].node.visit(model)
 
         logging.debug(f'- E_mixed: {E_mixed}, E_pure: {E_pure}, n_mixed: {self.n_mixed}, n_pure: {self.n_pure}, cQc[0]: {Qc[0]}, Qc[1]: {Qc[1]}')
         logging.debug(f'- update Q to {self.Q} from {old_Q}')
         logging.debug(f'= end visit {self}')
 
-        return VisitResult(Q=self.Q, action_distr=mixing_distr)
+        return VisitResult(Q=result.Q, action=action, action_distr=mixing_distr)
 
 
 class SamplingNode(Node):
@@ -381,16 +389,13 @@ class SamplingNode(Node):
 
     def visit(self, model: Model) -> VisitResult:
         logging.debug(f'= Visiting {self}:')
-
         self.N += 1
 
         if not self._expanded:
             logging.debug(f'- expanding {self}')
-
             self.expand(model)
 
         h = np.random.choice(len(self.H), p=self.H)
-
         logging.debug(f'- sampling hidden state {h} from {self.H}')
 
         Qc = self.get_Qc()
@@ -411,7 +416,7 @@ class SamplingNode(Node):
         logging.debug(f'- Q_h: {Q_h}, luck_adjusted: {luck_adjusted_Q}')
         logging.debug(f'- update Q to {self.Q} from {old_Q}')
         logging.debug(f'= end visit {self}')
-        return VisitResult(Q=self.Q)
+        return VisitResult(Q=luck_adjusted_Q)
 
 
 class Tree:
