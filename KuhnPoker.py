@@ -2,6 +2,7 @@ from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, Va
 from ISMCTS import ActionNode, Constants, Tree, visit_counter
 from info_set import InfoSet
 from model import Model
+from utils import VisitCounter
 
 import numpy as np
 
@@ -182,6 +183,7 @@ if __name__ == '__main__':
     parser.add_argument("--iter", type=int, help="Number of iterations")
     parser.add_argument("--eps", type=float, help="Range parameter for Q-value uncertainty")
     parser.add_argument("--seed", type=int, help="Random seed")
+    parser.add_argument("--savetrees", action='store_true', help="Save visited trees")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -197,6 +199,9 @@ if __name__ == '__main__':
     if args.seed is not None:
         np.random.seed(args.seed)
 
+    if args.savetrees:
+        visit_counter = VisitCounter()
+
     if args.player == 'Alice':
         info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
     elif args.player == 'Bob':
@@ -209,4 +214,5 @@ if __name__ == '__main__':
     mcts = Tree(model, root)
     visit_dist = mcts.get_visit_distribution(args.iter)
     print(visit_dist)
-    visit_counter.save_visited_trees('debug')
+    if visit_counter is not None:
+        visit_counter.save_visited_trees('debug')

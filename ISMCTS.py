@@ -17,8 +17,7 @@ class Constants:
 
 
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
-visit_counter = VisitCounter()
-
+visit_counter = None
 
 def to_interval(i: IntervalLike) -> Interval:
     if isinstance(i, Interval):
