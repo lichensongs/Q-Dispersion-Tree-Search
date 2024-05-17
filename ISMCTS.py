@@ -17,7 +17,6 @@ class Constants:
 
 
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
-visit_counter = None
 
 def to_interval(i: IntervalLike) -> Interval:
     if isinstance(i, Interval):
@@ -286,6 +285,7 @@ class SamplingNode(Node):
 
 class Tree:
     next_id = 0
+    visit_counter = VisitCounter()
 
     def __init__(self, model: Model, root: ActionNode):
         self.model = model
@@ -295,8 +295,8 @@ class Tree:
 
         self.tree_id = Tree.next_id
         Tree.next_id += 1
-        if visit_counter is not None:
-            visit_counter.add_tree(self)
+        if Tree.visit_counter is not None:
+            Tree.visit_counter.add_tree(self)
 
     def __str__(self):
         return f'Tree(id={self.tree_id}, owner={self.tree_owner}, root={self.root})'
@@ -305,8 +305,8 @@ class Tree:
         while self.root.N <= n:
             logging.debug(f'======= visit tree: {self}')
             self.root.visit(self.model)
-            if visit_counter is not None:
-                visit_counter.add_snapshot()
+            if Tree.visit_counter is not None:
+                Tree.visit_counter.add_snapshot()
 
         n_total = self.root.N - 1
         return {action: edge.node.N / n_total for action, edge in self.root.children.items()}

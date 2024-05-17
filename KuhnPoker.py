@@ -1,5 +1,5 @@
 from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray
-from ISMCTS import ActionNode, Constants, Tree, visit_counter
+from ISMCTS import ActionNode, Constants, Tree
 from info_set import InfoSet
 from model import Model
 from utils import VisitCounter
@@ -199,8 +199,8 @@ if __name__ == '__main__':
     if args.seed is not None:
         np.random.seed(args.seed)
 
-    if args.savetrees:
-        visit_counter = VisitCounter()
+    if args.savetrees is None:
+        Tree.visit_counter = None
 
     if args.player == 'Alice':
         info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
@@ -214,5 +214,5 @@ if __name__ == '__main__':
     mcts = Tree(model, root)
     visit_dist = mcts.get_visit_distribution(args.iter)
     print(visit_dist)
-    if visit_counter is not None:
-        visit_counter.save_visited_trees('debug')
+    if Tree.visit_counter is not None:
+        Tree.visit_counter.save_visited_trees('debug')

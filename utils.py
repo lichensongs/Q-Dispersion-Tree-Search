@@ -9,7 +9,7 @@ class VisitCounter:
         self.visited = 0
 
     def add_tree(self, tree):
-        self.trees.append(tree)
+        self._trees.append(tree)
 
     def add_snapshot(self):
         trees = [copy.deepcopy(tree) for tree in self._trees if tree.root.N > 0]
