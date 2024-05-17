@@ -7,7 +7,7 @@ import numpy as np
 
 import abc
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 import logging
 
 
@@ -17,7 +17,6 @@ class Constants:
 
 
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
-trees = []
 visit_counter = VisitCounter()
 
 
@@ -297,7 +296,8 @@ class Tree:
 
         self.tree_id = Tree.next_id
         Tree.next_id += 1
-        trees.append(self)
+        if visit_counter is not None:
+            visit_counter.add_tree(self)
 
     def __str__(self):
         return f'Tree(id={self.tree_id}, owner={self.tree_owner}, root={self.root})'
@@ -306,7 +306,8 @@ class Tree:
         while self.root.N <= n:
             logging.debug(f'======= visit tree: {self}')
             self.root.visit(self.model)
-            visit_counter.save_visited_trees(trees, 'debug')
+            if visit_counter is not None:
+                visit_counter.add_snapshot()
 
         n_total = self.root.N - 1
         return {action: edge.node.N / n_total for action, edge in self.root.children.items()}

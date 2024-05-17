@@ -1,5 +1,5 @@
 from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray
-from ISMCTS import ActionNode, Constants, Tree
+from ISMCTS import ActionNode, Constants, Tree, visit_counter
 from info_set import InfoSet
 from model import Model
 
@@ -209,3 +209,4 @@ if __name__ == '__main__':
     mcts = Tree(model, root)
     visit_dist = mcts.get_visit_distribution(args.iter)
     print(visit_dist)
+    visit_counter.save_visited_trees('debug')

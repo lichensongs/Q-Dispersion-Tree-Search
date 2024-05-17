@@ -1,17 +1,24 @@
 import pickle
 import numpy as np
+import copy
 
 class VisitCounter:
     def __init__(self):
+        self.trees = []
+        self.trees_snapshot = []
         self.visited = 0
 
-    def save_visited_trees(self, trees, folder_path):
-        trees_to_save = [tree for tree in trees if tree.root.N > 0]
+    def add_tree(self, tree):
+        self.trees.append(tree)
 
-        with open(f"{folder_path}/tree-{self.visited}.pkl", 'wb') as f:
-            pickle.dump(trees_to_save, f)
-
+    def add_snapshot(self):
+        trees = [copy.deepcopy(tree) for tree in self.trees if tree.root.N > 0]
+        self.trees_snapshot.append(trees)
         self.visited += 1
+
+    def save_visited_trees(self, folder_path):
+        with open(f"{folder_path}/tree_snapshots.pkl", 'wb') as f:
+            pickle.dump(self.trees_snapshot, f)
 
 def perturb_prob_simplex(intervals: np.ndarray, probs: np.ndarray, eps=0.01):
     """
