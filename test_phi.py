@@ -1,4 +1,4 @@
-from ISMCTS import SamplingNode
+from utils import perturb_prob_simplex
 
 import itertools
 import numpy as np
@@ -63,55 +63,72 @@ def perturb_intervals(intervals: np.ndarray, weights: np.ndarray, eps: float, c:
     min_lower_bound = np.min(weighted_intervals[:, 0])
     return np.array([min_lower_bound, max_upper_bound])
 
+def perturb_weighted_sum_intervals(intervals: np.ndarray, weights: np.ndarray, eps: float) -> np.ndarray:
+    perturbed_weights = perturb_by_eps(weights, eps)
 
-def test_sample_phi(c, eps, intervals, weights):
-    sample_interval = SamplingNode.Phi(c, eps, intervals, weights)
-    perturbed_interval = perturb_intervals(intervals, weights, eps, c)
-    print(f"\n========TEST=========\n intervals:\n{intervals}, c: {c}, eps: {eps},  weights: {weights}")
-    assert np.max(np.abs(sample_interval - perturbed_interval)) <= 1e-8, f"phi_interval: {sample_interval}, perturbed_interval: {perturbed_interval}"
-    print(f'========PASSED========{sample_interval}\n')
+    weighted_intervals = []
+    for weights in perturbed_weights:
+        weighted_intervals.append(eval_weighted_interval(intervals, weights))
+
+    weighted_intervals = np.array(weighted_intervals)
+    max_upper_bound = np.max(weighted_intervals[:, 1])
+    min_lower_bound = np.min(weighted_intervals[:, 0])
+    return np.array([min_lower_bound, max_upper_bound])
+
+def test_func(f1, f2, params):
+    f1_res = f1(*params)
+    f2_res = f2(*params)
+    print(f"\n========TEST=========\n params: {params}")
+    assert np.max(np.abs(f1_res - f2_res)) <= 1e-8, f"f1_res: {f1_res}, f2_res: {f2_res}"
+    print(f'========PASSED========{f1_res}\n')
+
 
 if __name__ == '__main__':
 
-    c = 0
     eps = 0.1
     intervals = np.array([[0, 6], [3, 4]])
     weights = np.array([0.3, 0.7])
 
-    test_sample_phi(c, eps, intervals, weights)
+    test_func(perturb_weighted_sum_intervals,
+              perturb_prob_simplex,
+              (intervals, weights, eps))
 
-    c = 0
     eps = 0.3
     intervals = np.array([[1, 2], [3, 4]])
     weights = np.array([0.3, 0.7])
 
-    test_sample_phi(c, eps, intervals, weights)
+    test_func(perturb_weighted_sum_intervals,
+              perturb_prob_simplex,
+              (intervals, weights, eps))
 
-
-    c = 0
     eps = 0.5
     intervals = np.array([[0, 6], [3, 4]])
     weights = np.array([0.3, 0.7])
 
-    test_sample_phi(c, eps, intervals, weights)
+    test_func(perturb_weighted_sum_intervals,
+              perturb_prob_simplex,
+              (intervals, weights, eps))
 
-    c = 0
     eps = 0.5
     intervals = np.array([[1, 2], [3, 4]])
     weights = np.array([0.3, 0.7])
 
-    test_sample_phi(c, eps, intervals, weights)
+    test_func(perturb_weighted_sum_intervals,
+              perturb_prob_simplex,
+              (intervals, weights, eps))
 
-    c = 0
     eps = 0.05
     intervals = np.array([[1, 1], [-2, -2]])
     weights = np.array([2/3, 1/3])
 
-    test_sample_phi(c, eps, intervals, weights)
+    test_func(perturb_weighted_sum_intervals,
+              perturb_prob_simplex,
+              (intervals, weights, eps))
 
-    c = 1
     eps = 0.05
     intervals = np.array([[1, 1], [-2, -2]])
     weights = np.array([0.0, 1.0])
 
-    test_sample_phi(c, eps, intervals, weights)
+    test_func(perturb_weighted_sum_intervals,
+              perturb_prob_simplex,
+              (intervals, weights, eps))

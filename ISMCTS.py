@@ -1,7 +1,7 @@
 from basic_types import Action, ActionDistribution, HiddenValue, Interval, IntervalLike
 from info_set import InfoSet
 from model import Model
-from utils import VisitCounter
+from utils import VisitCounter, perturb_prob_simplex
 
 import numpy as np
 
@@ -27,98 +27,6 @@ def to_interval(i: IntervalLike) -> Interval:
     return np.array([i, i])
 
 
-@dataclass
-class VisitResult:
-    Q: Interval
-    action: Optional[Action] = None
-    action_distr: Optional[ActionDistribution] = None  # if action was mixed
-
-
-class LuckAdjuster:
-    @staticmethod
-    def Phi(c: int, Q: np.ndarray, p: np.ndarray, verbose=False) -> Interval:
-        """
-        p: shape of (n, )
-        Q: shape of (n, 2)
-        c: int in range[0, n-1]
-
-        p is a probability distribution over n elements.
-        Q represents a utility-belief-interval for each of the n elements.
-        c is an index sampled from p.
-
-        Computes:
-
-        Phi(p) = union_{p' in N(p)} phi(p')
-
-        where
-
-        N(p) = {p' | ||p - p'||_1 <= EPS}
-        Q_left = Q[:, 0]
-        Q_right = Q[:, 1]
-        phi(p') = union_{Q_left <= q <= Q_right} (q[c] - sum_i p'[i] * q[i])
-
-        Returns the set Phi(p) as an Interval.
-        """
-        one_c = np.zeros_like(p)
-        one_c[c] = 1
-
-        output = np.zeros(2)
-        for index in (0, 1):
-            index_sign = 1 - 2 * index
-            p_prime = p.copy()
-            phi_partial_extreme = -Q[:, 1 - index]
-            phi_partial_extreme[c] = -Q[c, index]
-            index_ordering = np.argsort(phi_partial_extreme)
-
-            for direction in (-1, 1):
-                eps_limit = (1 - p_prime) if direction == index_sign else p_prime
-                remaining_eps = Constants.EPS
-                for i in index_ordering[::direction]:
-                    eps_to_use = min(remaining_eps, eps_limit[i])
-                    p_prime[i] += index_sign * direction * eps_to_use
-                    remaining_eps -= eps_to_use
-                    if remaining_eps <= 0:
-                        break
-
-            assert np.isclose(np.sum(p_prime), 1), p_prime
-
-            q = Q[:, 1 - index].copy()
-            q[c] = Q[c, index]
-            output[index] = np.dot(one_c - p_prime, q)
-
-        if verbose:
-            print('*****')
-            print('Phi computation:')
-            print('p = %s' % p)
-            print('Q = %s' % Q)
-            print('c = %s' % c)
-            print('eps = %s' % Constants.EPS)
-            print('Phi = %s' % output)
-        return output
-
-    @staticmethod
-    def calc_luck_adjusted_Q(Qc: np.ndarray, Q: Interval, c: int, p: np.ndarray) -> Interval:
-        """
-        Qc: shape of (n, 2)
-        c: int in range[0, n-1]
-        p: shape of (n, )
-
-        We have a list of n elements, with associated probability distribution p and
-        utility-belief-intervals Qc. We sampled index c from p.
-
-        Adjusts Q based on how lucky we were to sample c, based on p and Qc.
-        """
-        luck_adjustment = LuckAdjuster.Phi(c, Qc, p)
-        luck_adjusted_Q = np.array([Q[0] - luck_adjustment[1], Q[1] - luck_adjustment[0]])
-
-        logging.debug(f'-- calc luck adjusted Q:')
-        for q in Qc:
-            logging.debug(f'-- child_Qs: {q}')
-        logging.debug(f'-- luck_adjustment: {luck_adjustment}')
-
-        return luck_adjusted_Q
-
-
 class Node(abc.ABC):
     def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, Q: IntervalLike=0):
         self.info_set = info_set
@@ -128,6 +36,7 @@ class Node(abc.ABC):
         self.N = 0
         self.tree_owner = tree_owner
         self.children: Dict[int, Edge] = {}
+        self.residual_Q_to_V = 0
 
     def add_child(self, key: int, node: 'Node'):
         self.children[key] = Edge(len(self.children), node)
@@ -136,12 +45,22 @@ class Node(abc.ABC):
     def get_Qc(self) -> np.ndarray:
         return np.array([edge.node.Q for edge in self.children.values()])
 
+    def get_Vc(self) -> np.ndarray:
+        return np.array([edge.node.V for edge in self.children.values()])
+
     def terminal(self) -> bool:
         return self.game_outcome is not None
 
     @abc.abstractmethod
-    def visit(self, model: Model) -> VisitResult:
+    def visit(self, model: Model):
         pass
+
+    def calc_union_interval(self, probs) -> Interval:
+        Vc = self.get_Vc()
+        Vc_intervals = np.tile(Vc[:, np.newaxis], (1, 2))
+        child_keys = np.array(list(self.children.keys()))
+        union_interval = perturb_prob_simplex(Vc_intervals, probs[child_keys], eps=Constants.EPS)
+        return union_interval
 
 
 @dataclass
@@ -237,62 +156,40 @@ class ActionNode(Node):
         assert s > 0, (self.P, mask)
         return P / s
 
-    def visit(self, model: Model) -> VisitResult:
+    def visit(self, model: Model):
         logging.debug(f'= Visiting {self}:')
         self.N += 1
 
         if self.terminal():
             logging.debug(f'= end visit {self} hit terminal, return Q: {self.Q}')
-            return VisitResult(Q=self.Q)
+            return
 
         if not self._expanded:
             self.expand(model)
             logging.debug(f'= end visit {self} expand, return self.Q: {self.Q}')
-            return VisitResult(Q=self.Q)
+            return
+
 
         if self.spawned_tree is not None:
-            return self.spawned_visit(model)
+            self.spawned_visit(model)
         else:
             return self.unspawned_visit(model)
 
-    def spawned_visit(self, model: Model) -> VisitResult:
+    def spawned_visit(self, model: Model):
         logging.debug(f'======= get action distr from spawn tree: {self.spawned_tree}')
         if self.spawned_tree.root.N == 0:
             self.spawned_tree.root.visit(model)
-        result = self.spawned_tree.root.visit(model)
-        action = result.action
-        action_distr = result.action_distr
 
+        action = self.spawned_tree.root.visit(model)
         edge = self.children[action]
-        c = edge.index
         child = edge.node
+        child.visit(model)
 
-        if action_distr is None:
-            # pure case
-            result = child.visit(model)
-            child_Q = result.Q
-            self.Q = (self.Q * (self.N - 1) + child_Q) / self.N
-            return VisitResult(Q=child_Q, action=action)
-        else:
-            Qc = self.get_Qc()
+        union_interval = self.calc_union_interval(self.P)
+        self.Q = union_interval + child.residual_Q_to_V
+        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
 
-            logging.debug(f'======= spawned tree action: {action}, root: {self.spawned_tree.root}')
-
-            result = child.visit(model)
-            child_Q = result.Q
-
-            luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, child_Q, c, action_distr)
-
-            old_Q = self.Q
-            self.Q = (self.Q * (self.N - 1) + luck_adjusted_Q) / self.N
-
-            logging.debug(f'- child_Q: {child_Q}, luck_adjusted: {luck_adjusted_Q}')
-            logging.debug(f'- update Q to {self.Q} from {old_Q}')
-            logging.debug(f'= end visit {self}')
-
-            return VisitResult(Q=luck_adjusted_Q, action=action, action_distr=action_distr)
-
-    def unspawned_visit(self, model: Model) -> VisitResult:
+    def unspawned_visit(self, model: Model):
         old_Q = self.Q
         mixing_distr = None
         Qc, action_indices = self.computePUCT()
@@ -319,14 +216,12 @@ class ActionNode(Node):
         assert self.Q.shape == (2, )
 
         action = self.actions[action_index]
-        result = self.children[action].node.visit(model)
+        self.children[action].node.visit(model)
 
         logging.debug(f'- E_mixed: {E_mixed}, E_pure: {E_pure}, n_mixed: {self.n_mixed}, n_pure: {self.n_pure}, cQc[0]: {Qc[0]}, Qc[1]: {Qc[1]}')
         logging.debug(f'- update Q to {self.Q} from {old_Q}')
         logging.debug(f'= end visit {self}')
-
-        return VisitResult(Q=result.Q, action=action, action_distr=mixing_distr)
-
+        return action
 
 class SamplingNode(Node):
     def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0):
@@ -391,7 +286,7 @@ class SamplingNode(Node):
         spawned_tree = Tree(model, root)
         return spawned_tree
 
-    def visit(self, model: Model) -> VisitResult:
+    def visit(self, model: Model):
         logging.debug(f'= Visiting {self}:')
         self.N += 1
 
@@ -402,25 +297,15 @@ class SamplingNode(Node):
         h = np.random.choice(len(self.H), p=self.H)
         logging.debug(f'- sampling hidden state {h} from {self.H}')
 
-        Qc = self.get_Qc()
-
         edge = self.children[h]
-        c = edge.index
         child = edge.node
+        child.visit(model)
 
-        result = child.visit(model)
-        Q_h = result.Q
+        union_interval = self.calc_union_interval(self.H)
+        self.Q = union_interval + child.residual_Q_to_V
+        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
 
-        h_keys = np.array(list(self.children.keys()))
-        luck_adjusted_Q = LuckAdjuster.calc_luck_adjusted_Q(Qc, Q_h, c, self.H[h_keys])
-
-        old_Q = self.Q
-        self.Q = (self.Q * (self.N - 1) + luck_adjusted_Q) / self.N
-
-        logging.debug(f'- Q_h: {Q_h}, luck_adjusted: {luck_adjusted_Q}')
-        logging.debug(f'- update Q to {self.Q} from {old_Q}')
         logging.debug(f'= end visit {self}')
-        return VisitResult(Q=luck_adjusted_Q)
 
 
 class Tree:

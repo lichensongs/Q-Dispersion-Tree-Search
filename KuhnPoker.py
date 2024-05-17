@@ -135,7 +135,7 @@ class  KuhnPokerModel(Model):
         self._V_tensor[1, 0, Q] = 0
         self._V_tensor[1, 0, K] = 1 + q / 2
 
-        self._V_tensor[1, 1, J] = -1
+        self._V_tensor[1, 1, J] = -0.5 - 1.5 * q # Bob's tree [01] ?J
         self._V_tensor[1, 1, Q] = 1 - 3 * q # Bob's tree, [01], QJ
         self._V_tensor[1, 1, K] = -2 # Bob's tree, [01], KJ
 

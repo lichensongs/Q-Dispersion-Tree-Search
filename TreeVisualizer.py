@@ -63,8 +63,11 @@ def draw_mcts_tree(ax, tree, node_size=1600, font_size=10):
     nx.draw_networkx_edges(G, pos, edgelist=edge_labels.keys(), arrowstyle='-', ax=ax)
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=10, ax=ax)
 
+    # annotate nodes with Q, V, P, or H values
+
     for node, (x, y) in pos.items():
-        info = f"Q={node.Q}"
+        info = f"cp: {node.cp}"
+        info += f"\nQ={node.Q}"
         if node.V is not None:
             info += f"\nV={node.V:.2f}"
         else:
@@ -74,6 +77,8 @@ def draw_mcts_tree(ax, tree, node_size=1600, font_size=10):
             info += f"\nP={node.P}"
         else:
             info += f"\nH={node.H}"
+
+        info += f"\nres={node.residual_Q_to_V}"
 
         ax.text(x, y + 0.04, info, fontsize=9, ha='left', va='bottom', color='black', bbox=dict(facecolor='white', alpha=0.5, edgecolor='black'))
 
