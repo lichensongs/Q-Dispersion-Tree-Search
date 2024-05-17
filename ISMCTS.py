@@ -161,7 +161,8 @@ class ActionNode(Node):
         self.spawned_tree: Optional[Tree] = None
 
         if self.terminal():
-            self.Q = to_interval(self.game_outcome[self.tree_owner])
+            self.V = self.game_outcome[self.tree_owner]
+            self.Q = to_interval(self.V)
 
         self.PURE = np.zeros(len(self.actions))
         self.MIXED = np.zeros(len(self.actions))
