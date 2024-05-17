@@ -12,7 +12,7 @@ import logging
 
 
 class Constants:
-    EPS = 0.05
+    EPS = 0.0
     c_PUCT = 1.0
 
 
@@ -55,11 +55,11 @@ class Node(abc.ABC):
     def visit(self, model: Model):
         pass
 
-    def calc_union_interval(self, probs) -> Interval:
+    def calc_union_interval(self, probs, eps=Constants.EPS) -> Interval:
         Vc = self.get_Vc()
         Vc_intervals = np.tile(Vc[:, np.newaxis], (1, 2))
         child_keys = np.array(list(self.children.keys()))
-        union_interval = perturb_prob_simplex(Vc_intervals, probs[child_keys], eps=Constants.EPS)
+        union_interval = perturb_prob_simplex(Vc_intervals, probs[child_keys], eps=eps)
         return union_interval
 
 
