@@ -83,11 +83,6 @@ class ActionNode(Node):
             self.V = self.game_outcome[self.tree_owner]
             self.Q = to_interval(self.V)
 
-        self.PURE = np.zeros(len(self.actions))
-        self.MIXED = np.zeros(len(self.actions))
-        self.n_mixed = 0
-        self.n_pure = 0
-
         self._expanded = False
 
     def __str__(self):
@@ -169,7 +164,6 @@ class ActionNode(Node):
             logging.debug(f'= end visit {self} expand, return self.Q: {self.Q}')
             return
 
-
         if self.spawned_tree is not None:
             self.spawned_visit(model)
         else:
@@ -181,8 +175,7 @@ class ActionNode(Node):
             self.spawned_tree.root.visit(model)
 
         action = self.spawned_tree.root.visit(model)
-        edge = self.children[action]
-        child = edge.node
+        child = self.children[action].node
         child.visit(model)
 
         union_interval = self.calc_union_interval(self.P)
@@ -190,36 +183,21 @@ class ActionNode(Node):
         self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
 
     def unspawned_visit(self, model: Model):
-        old_Q = self.Q
-        mixing_distr = None
         Qc, action_indices = self.computePUCT()
         if len(action_indices) == 1:  # pure case
-            self.n_pure += 1
             action_index = action_indices[0]
-            pure_distr = np.zeros(len(self.P))
-            pure_distr[action_index] = 1
-            self.PURE = (self.PURE * (self.n_pure-1) + pure_distr) / self.n_pure
-
-            logging.debug(f'- pure action {self.PURE}, action_index: {action_index}')
         else:  # mixed case
-            self.n_mixed += 1
             mixing_distr = self.get_mixing_distribution(action_indices)
             action_index = np.random.choice(len(self.P), p=mixing_distr)
-            self.MIXED = (self.MIXED * (self.n_mixed-1) + mixing_distr) / self.n_mixed
-
-            logging.debug(f'- mixed action {self.MIXED}, action_index: {action_index}')
-
-        na = np.newaxis
-        E_mixed = np.sum(Qc * self.MIXED[:, na], axis=0)
-        E_pure = np.sum(Qc * self.PURE[:, na], axis=0)
-        self.Q = (self.n_mixed * E_mixed + self.n_pure * E_pure) / (self.n_mixed + self.n_pure)
-        assert self.Q.shape == (2, )
 
         action = self.actions[action_index]
-        self.children[action].node.visit(model)
+        child = self.children[action].node
+        child.visit(model)
 
-        logging.debug(f'- E_mixed: {E_mixed}, E_pure: {E_pure}, n_mixed: {self.n_mixed}, n_pure: {self.n_pure}, cQc[0]: {Qc[0]}, Qc[1]: {Qc[1]}')
-        logging.debug(f'- update Q to {self.Q} from {old_Q}')
+        union_interval = self.calc_union_interval(self.P)
+        self.Q = union_interval + child.residual_Q_to_V
+        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
+
         logging.debug(f'= end visit {self}')
         return action
 
