@@ -15,14 +15,12 @@ class Constants:
     EPS = 0.0
     c_PUCT = 1.0
 
-
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
 
 def to_interval(i: IntervalLike) -> Interval:
     if isinstance(i, Interval):
         return i
     return np.array([i, i])
-
 
 class Node(abc.ABC):
     def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, Q: IntervalLike=0):
@@ -172,7 +170,7 @@ class ActionNode(Node):
         child = edge.node
         child.visit(model)
 
-        union_interval = self.calc_union_interval(self.P)
+        union_interval = self.calc_union_interval(self.P, eps=Constants.EPS)
         self.Q = union_interval + child.residual_Q_to_V
         self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
 
