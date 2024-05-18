@@ -126,8 +126,8 @@ class ActionNode(Node):
             Q[i] = child.Q
             N[i] = child.N
 
-        PUCT = Constants.c_PUCT * P * np.sqrt(np.sum(N)) / (N + 1)
-        PUCT = Q + PUCT[:, np.newaxis]
+        PUCT_N_adjustment = Constants.c_PUCT * P * np.sqrt(np.sum(N)) / (N + 1)
+        PUCT = Q + PUCT_N_adjustment[:, np.newaxis]
 
         # check for pure case
         max_lower_bound_index = np.argmax(PUCT[:, 0])
@@ -137,16 +137,10 @@ class ActionNode(Node):
         for q, n, puct in zip(Q, N, PUCT):
             logging.debug(f'Q: {q}, N: {n}, PUCT: {puct}')
 
-        return Q, np.where(PUCT[:, 1] >= max_lower_bound - 1e-8)[0]
-
-    def get_mixing_distribution(self, action_indices):
-        mask = np.zeros_like(self.P)
-        mask[action_indices] = 1
-        P = self.P * mask
-
-        s = np.sum(P)
-        assert s > 0, (self.P, mask)
-        return P / s
+        overlapping_action_indices = np.where(PUCT[:, 1] >= max_lower_bound - 1e-8)[0]
+        action_index = np.argmax(PUCT_N_adjustment[overlapping_action_indices])
+        action = actions[overlapping_action_indices[action_index]]
+        return action
 
     def visit(self, model: Model):
         logging.debug(f'= Visiting {self}:')
@@ -162,41 +156,25 @@ class ActionNode(Node):
             return
 
         if self.spawned_tree is not None:
-            self.spawned_visit(model)
+            logging.debug(f'======= get action distr from spawn tree: {self.spawned_tree}')
+            if self.spawned_tree.root.N == 0:
+                self.spawned_tree.root.visit(model)
+            action = self.spawned_tree.root.visit(model)
+            self.take_action_update(action, model)
         else:
-            return self.unspawned_visit(model)
+            action = self.computePUCT()
+            self.take_action_update(action, model)
+            return action
 
-    def spawned_visit(self, model: Model):
-        logging.debug(f'======= get action distr from spawn tree: {self.spawned_tree}')
-        if self.spawned_tree.root.N == 0:
-            self.spawned_tree.root.visit(model)
-
-        action = self.spawned_tree.root.visit(model)
-        child = self.children[action].node
+    def take_action_update(self, action: Action, model: Model):
+        logging.debug(f'= Taking action {action} from {self}')
+        edge = self.children[action]
+        child = edge.node
         child.visit(model)
 
         union_interval = self.calc_union_interval(self.P)
         self.Q = union_interval + child.residual_Q_to_V
         self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
-
-    def unspawned_visit(self, model: Model):
-        Qc, action_indices = self.computePUCT()
-        if len(action_indices) == 1:  # pure case
-            action_index = action_indices[0]
-        else:  # mixed case
-            mixing_distr = self.get_mixing_distribution(action_indices)
-            action_index = np.random.choice(len(self.P), p=mixing_distr)
-
-        action = self.actions[action_index]
-        child = self.children[action].node
-        child.visit(model)
-
-        union_interval = self.calc_union_interval(self.P)
-        self.Q = union_interval + child.residual_Q_to_V
-        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
-
-        logging.debug(f'= end visit {self}')
-        return action
 
 class SamplingNode(Node):
     def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0):
