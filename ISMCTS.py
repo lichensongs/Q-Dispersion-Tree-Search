@@ -57,12 +57,20 @@ class Node(abc.ABC):
         union_interval = perturb_prob_simplex(Vc_intervals, probs[child_keys], eps=eps)
         return union_interval
 
+    def take_child_key_update(self, key: int, model: Model, prob):
+        logging.debug(f'= Taking action {key} from {self}')
+        edge = self.children[key]
+        child = edge.node
+        child.visit(model)
+
+        union_interval = self.calc_union_interval(prob, eps=Constants.EPS)
+        self.Q = union_interval + child.residual_Q_to_V
+        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
 
 @dataclass
 class Edge:
     index: int
     node: Node
-
 
 class ActionNode(Node):
     def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0):
@@ -158,21 +166,11 @@ class ActionNode(Node):
             if self.spawned_tree.root.N == 0:
                 self.spawned_tree.root.visit(model)
             action = self.spawned_tree.root.visit(model)
-            self.take_action_update(action, model)
+            self.take_child_key_update(action, model, self.P)
         else:
             action = self.computePUCT()
-            self.take_action_update(action, model)
+            self.take_child_key_update(action, model, self.P)
             return action
-
-    def take_action_update(self, action: Action, model: Model):
-        logging.debug(f'= Taking action {action} from {self}')
-        edge = self.children[action]
-        child = edge.node
-        child.visit(model)
-
-        union_interval = self.calc_union_interval(self.P, eps=Constants.EPS)
-        self.Q = union_interval + child.residual_Q_to_V
-        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
 
 class SamplingNode(Node):
     def __init__(self, info_set: InfoSet, tree_owner: Optional[int] = None, initQ: IntervalLike=0):
@@ -248,15 +246,7 @@ class SamplingNode(Node):
         h = np.random.choice(len(self.H), p=self.H)
         logging.debug(f'- sampling hidden state {h} from {self.H}')
 
-        edge = self.children[h]
-        child = edge.node
-        child.visit(model)
-
-        union_interval = self.calc_union_interval(self.H)
-        self.Q = union_interval + child.residual_Q_to_V
-        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
-
-        logging.debug(f'= end visit {self}')
+        self.take_child_key_update(h, model, self.H)
 
 
 class Tree:

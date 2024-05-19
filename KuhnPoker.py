@@ -103,7 +103,7 @@ class KuhnPokerInfoSet(InfoSet):
         return KuhnPokerInfoSet(list(self.action_history), cards)
 
 
-class  KuhnPokerModel(Model):
+class KuhnPokerModel(Model):
     def __init__(self, p, q):
         self.p = p
         self.q = q
