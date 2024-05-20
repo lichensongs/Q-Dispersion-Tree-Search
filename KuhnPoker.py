@@ -121,7 +121,9 @@ class KuhnPokerModel(Model):
         self._P_tensor[0, J] = np.array([1-p, p])  # bluff with a Jack with prob p
         self._P_tensor[1, Q] = np.array([1-q, q])  # call with a Queen with prob q
 
-        self._V_tensor = np.zeros((2, 2, 3))  # owner, prev_action, card
+        # self._V_tensor = np.zeros((2, 2, 3))  # owner, prev_action, card
+        self._V_Action_tensor = np.random.normal(size=(2, 2, 3))
+        self._V_Hidden_tensor = np.random.normal(size=(2, 2, 3))
         # self._V_hidden_tensor = np.zeros((2, 2, 3))  # owner, prev_action, card
 
         # self._V_tensor[0, 0, J] = -1
@@ -148,7 +150,7 @@ class KuhnPokerModel(Model):
         x = info_set.action_history[-1]
         y = card.value
         P = self._P_tensor[x][y]
-        V = self._V_tensor[tree_owner][x][y]
+        V = self._V_Action_tensor[tree_owner][x][y]
         Vc = np.zeros(2)
 
         return P, V, Vc
@@ -171,7 +173,7 @@ class KuhnPokerModel(Model):
         x = info_set.action_history[-1]
         y = card.value
 
-        V = self._V_tensor[tree_owner][x][y]
+        V = self._V_Hidden_tensor[tree_owner][x][y]
         Vc = np.zeros(len(Card))
         return H, V, Vc
 
