@@ -31,8 +31,8 @@ class Node(abc.ABC):
         self.N = 0
         self.tree_owner = tree_owner
         self.children: Dict[int, Edge] = {}
-        self.residual_Q_to_V = 0
         self.EV = None
+        self.EQ_minus_V = 0
 
     def add_child(self, key: int, node: 'Node'):
         self.children[key] = Edge(len(self.children), node)
@@ -67,12 +67,8 @@ class Node(abc.ABC):
         if self.EV is None:
             self.EV = self.calc_union_interval(prob, eps=Constants.EPS)
 
-        child_Q_residuals = np.stack([to_interval(v.node.residual_Q_to_V) for k, v in self.children.items()], axis=0)
-        N = np.array([v.node.N for k, v in self.children.items()])
-        N = N / np.sum(N)
-        residual = (N[np.newaxis, :] @ child_Q_residuals)[0]
-        self.Q = self.EV + residual
-        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 2) + self.Q - self.V) / (self.N - 1)
+        self.EQ_minus_V = (self.EQ_minus_V * (self.N - 2) + child.Q - child.V) / (self.N - 1)
+        self.Q = self.EV + self.EQ_minus_V
 
 @dataclass
 class Edge:
