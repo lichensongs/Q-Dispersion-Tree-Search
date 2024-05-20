@@ -64,8 +64,13 @@ class Node(abc.ABC):
         child.visit(model)
 
         union_interval = self.calc_union_interval(prob, eps=Constants.EPS)
-        self.Q = union_interval + child.residual_Q_to_V
-        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 1) + self.Q - self.V) / self.N
+
+        child_Q_residuals = np.stack([to_interval(v.node.residual_Q_to_V) for k, v in self.children.items()], axis=0)
+        N = np.array([v.node.N for k, v in self.children.items()])
+        N = N / np.sum(N)
+        residual = (N[np.newaxis, :] @ child_Q_residuals)[0]
+        self.Q = union_interval + residual
+        self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 2) + self.Q - self.V) / (self.N - 1)
 
 @dataclass
 class Edge:
@@ -242,8 +247,10 @@ class SamplingNode(Node):
         if not self._expanded:
             logging.debug(f'- expanding {self}')
             self.expand(model)
+            return
 
-        h = np.random.choice(len(self.H), p=self.H)
+        PUCT_N = {k: self.H[k] / (v.node.N + 1) for k, v in self.children.items()}
+        h = max(PUCT_N, key=PUCT_N.get)
         logging.debug(f'- sampling hidden state {h} from {self.H}')
 
         self.take_child_key_update(h, model, self.H)

@@ -124,21 +124,21 @@ class KuhnPokerModel(Model):
         self._V_tensor = np.zeros((2, 2, 3))  # owner, prev_action, card
         # self._V_hidden_tensor = np.zeros((2, 2, 3))  # owner, prev_action, card
 
-        self._V_tensor[0, 0, J] = -1
-        self._V_tensor[0, 0, Q] = -1 # Alice's tree, [010], Q?
-        self._V_tensor[0, 0, K] = -1 # Alice's tree, [010], K?
+        # self._V_tensor[0, 0, J] = -1
+        # self._V_tensor[0, 0, Q] = -1 # Alice's tree, [010], Q?
+        # self._V_tensor[0, 0, K] = -1 # Alice's tree, [010], K?
 
-        self._V_tensor[0, 1, J] = -1
-        self._V_tensor[0, 1, Q] = 2 * (p - 1) / (1 + p) # Alice's tree, [011], Q?
-        self._V_tensor[0, 1, K] = +2
+        # self._V_tensor[0, 1, J] = -1
+        # self._V_tensor[0, 1, Q] = 2 * (p - 1) / (1 + p) # Alice's tree, [011], Q?
+        # self._V_tensor[0, 1, K] = +2
 
-        self._V_tensor[1, 0, J] = -1 + p * (1 - 3*q) / 2
-        self._V_tensor[1, 0, Q] = 0
-        self._V_tensor[1, 0, K] = 1 + q / 2
+        # self._V_tensor[1, 0, J] = -1 + p * (1 - 3*q) / 2
+        # self._V_tensor[1, 0, Q] = 0
+        # self._V_tensor[1, 0, K] = 1 + q / 2
 
-        self._V_tensor[1, 1, J] = -0.5 - 1.5 * q # Bob's tree [01] ?J
-        self._V_tensor[1, 1, Q] = 1 - 3 * q # Bob's tree, [01], QJ
-        self._V_tensor[1, 1, K] = -2 # Bob's tree, [01], KJ
+        # self._V_tensor[1, 1, J] = -0.5 - 1.5 * q # Bob's tree [01] ?J
+        # self._V_tensor[1, 1, Q] = 1 - 3 * q # Bob's tree, [01], QJ
+        # self._V_tensor[1, 1, K] = -2 # Bob's tree, [01], KJ
 
 
     def action_eval(self, tree_owner: int, info_set: InfoSet) -> Tuple[PolicyArray, Value, ValueChildArray]:
