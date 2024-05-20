@@ -65,13 +65,13 @@ class Node(abc.ABC):
         child.visit(model)
 
         if self.EV is None:
-            union_interval = self.calc_union_interval(prob, eps=Constants.EPS)
+            self.EV = self.calc_union_interval(prob, eps=Constants.EPS)
 
         child_Q_residuals = np.stack([to_interval(v.node.residual_Q_to_V) for k, v in self.children.items()], axis=0)
         N = np.array([v.node.N for k, v in self.children.items()])
         N = N / np.sum(N)
         residual = (N[np.newaxis, :] @ child_Q_residuals)[0]
-        self.Q = union_interval + residual
+        self.Q = self.EV + residual
         self.residual_Q_to_V = (self.residual_Q_to_V * (self.N - 2) + self.Q - self.V) / (self.N - 1)
 
 @dataclass
