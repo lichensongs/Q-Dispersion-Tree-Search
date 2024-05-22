@@ -10,21 +10,13 @@ from typing import Tuple
 class Model(abc.ABC):
     # add abstract methods
     @abc.abstractmethod
-    def eval_P(self, node):
+    def eval_P(self, node) -> PolicyArray:
         pass
 
     @abc.abstractmethod
-    def eval_V(self, node):
+    def eval_V(self, node) -> Tuple[Value, ValueChildArray]:
         pass
 
     @abc.abstractmethod
-    def eval_H(self, node):
+    def eval_H(self, node) -> HiddenArray:
         pass
-
-    # @abc.abstractmethod
-    # def action_eval(self, info_set: InfoSet) -> Tuple[PolicyArray, Value, ValueChildArray]:
-    #     pass
-
-    # @abc.abstractmethod
-    # def hidden_eval(self, info_set: InfoSet) -> Tuple[HiddenArray, Value, ValueChildArray]:
-    #     pass

@@ -69,9 +69,9 @@ def draw_mcts_tree(ax, tree, node_size=1600, font_size=10):
         info = f"cp: {node.cp}"
         info += f"\nQ={node.Q}"
         if node.V is not None:
-            info += f"\nV={node.V:.2f}"
+            info += f"\nV={node.V:.3f}"
         else:
-            info += f"\nV={node.V}"
+            info += f"\nV=None"
 
         if isinstance(node, ActionNode):
             info += f"\nP={node.P}"
