@@ -1,6 +1,4 @@
 from basic_types import HiddenArray, PolicyArray, Value, ValueChildArray
-from info_set import InfoSet
-
 
 import numpy as np
 
@@ -12,9 +10,21 @@ from typing import Tuple
 class Model(abc.ABC):
     # add abstract methods
     @abc.abstractmethod
-    def action_eval(self, info_set: InfoSet) -> Tuple[PolicyArray, Value, ValueChildArray]:
+    def eval_P(self, node):
         pass
 
     @abc.abstractmethod
-    def hidden_eval(self, info_set: InfoSet) -> Tuple[HiddenArray, Value, ValueChildArray]:
+    def eval_V(self, node):
         pass
+
+    @abc.abstractmethod
+    def eval_H(self, node):
+        pass
+
+    # @abc.abstractmethod
+    # def action_eval(self, info_set: InfoSet) -> Tuple[PolicyArray, Value, ValueChildArray]:
+    #     pass
+
+    # @abc.abstractmethod
+    # def hidden_eval(self, info_set: InfoSet) -> Tuple[HiddenArray, Value, ValueChildArray]:
+    #     pass

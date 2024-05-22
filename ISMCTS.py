@@ -103,7 +103,9 @@ class ActionNode(Node):
             # already evaluated
             return
 
-        self.P, self.V, self.Vc = model.action_eval(self.tree_owner, self.info_set)
+        # self.P, self.V, self.Vc = model.action_eval(self.tree_owner, self.info_set)
+        self.P = model.eval_P(self)
+        self.V, self.Vc = model.eval_V(self)
         self.Q = to_interval(self.V)
 
     def expand(self, model: Model):
@@ -205,7 +207,10 @@ class SamplingNode(Node):
         if self.H is not None:
             # already evaluated
             return
-        self.H, self.V, self.Vc = model.hidden_eval(self.tree_owner, self.info_set)
+
+        self.H = model.eval_H(self)
+        self.V, self.Vc = model.eval_V(self)
+        # self.H, self.V, self.Vc = model.hidden_eval(self.tree_owner, self.info_set)
         self.apply_H_mask()
         self.Q = to_interval(self.V)
 

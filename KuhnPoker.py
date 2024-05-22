@@ -1,5 +1,5 @@
 from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray
-from ISMCTS import ActionNode, Constants, Tree
+from ISMCTS import ActionNode, Constants, Tree, Node, SamplingNode
 from info_set import InfoSet
 from model import Model
 from utils import VisitCounter
@@ -121,10 +121,25 @@ class KuhnPokerModel(Model):
         self._P_tensor[0, J] = np.array([1-p, p])  # bluff with a Jack with prob p
         self._P_tensor[1, Q] = np.array([1-q, q])  # call with a Queen with prob q
 
-        # self._V_tensor = np.zeros((2, 2, 3))  # owner, prev_action, card
-        self._V_Action_tensor = np.random.normal(size=(2, 2, 3))
-        self._V_Hidden_tensor = np.random.normal(size=(2, 2, 3))
-        # self._V_hidden_tensor = np.zeros((2, 2, 3))  # owner, prev_action, card
+        # node type: 0=Action, 1=Hidden, 2=Action with Spawned, prev action, card (cp card if action or owner's card if hidden)
+        self._V_tensor = np.random.normal(size=(3, 2, 3))
+
+        self._V_tensor[0, 0, J] = -1 + p * (1 - 3*q) / 2 # Action, Bob's turn, [0], ?J
+        self._V_tensor[0, 0, Q] = 0 # Action, Bob's turn, [0], ?Q
+        self._V_tensor[0, 0, K] = 1 + q / 2 # Action, Bob's turn, [0], ?K
+
+        self._V_tensor[0, 1, J] = -1 # Action, Alice's turn, [01], J?
+        self._V_tensor[0, 1, Q] = 2 * (p - 1) / (1 + p) # Action, Alice's turn, [01], Q?
+        self._V_tensor[0, 1, K] = 2 # Action, Alice's turn, [01], K?
+
+        self._V_tensor[1, 0, :] = -1
+
+        self._V_tensor[1, 1, J] = -0.5 - 1.5 * q # Hidden, Bob's tree, [01], ?J
+        self._V_tensor[1, 1, Q] = 2 * (p - 1) / (1 + p) # Hidden, Alice's tree, [011], Q?
+        self._V_tensor[1, 1, K] = 2 # Hidden, Alice's tree, [011], K?
+
+        self._V_tensor[2, 1, Q] = 1 - 3 * q # Action, Bob's tree, [01], QJ
+        self._V_tensor[2, 1, K] = -2 # Action, Bob's tree, [01], KJ
 
         # self._V_tensor[0, 0, J] = -1
         # self._V_tensor[0, 0, Q] = -1 # Alice's tree, [010], Q?
@@ -134,7 +149,7 @@ class KuhnPokerModel(Model):
         # self._V_tensor[0, 1, Q] = 2 * (p - 1) / (1 + p) # Alice's tree, [011], Q?
         # self._V_tensor[0, 1, K] = +2
 
-        # self._V_tensor[1, 0, J] = -1 + p * (1 - 3*q) / 2
+        # self._V_tensor[1, 0, J] = -1 + p * (1 - 3*q) / 2 # this is double represented in Bob's tree: ?J [0] and ?J [01]
         # self._V_tensor[1, 0, Q] = 0
         # self._V_tensor[1, 0, K] = 1 + q / 2
 
@@ -143,19 +158,45 @@ class KuhnPokerModel(Model):
         # self._V_tensor[1, 1, K] = -2 # Bob's tree, [01], KJ
 
 
-    def action_eval(self, tree_owner: int, info_set: InfoSet) -> Tuple[PolicyArray, Value, ValueChildArray]:
-        cp = info_set.get_current_player()
-        card = info_set.cards[cp]
+    def eval_V(self, node: Node):
+        if isinstance(node, SamplingNode):
+            node_type = 1
+            card = node.info_set.cards[node.tree_owner]
+            num_of_children = 3
+        elif node.spawned_tree is None:
+            node_type = 0
+            card = node.info_set.cards[node.info_set.get_current_player()]
+            num_of_children = 2
+        else:
+            node_type = 2
+            card = node.info_set.cards[1 - node.tree_owner]
+            num_of_children = 2
+
         assert card is not None
-        x = info_set.action_history[-1]
+        x = node.info_set.action_history[-1]
+        y = card.value
+        V = self._V_tensor[node_type][x][y]
+
+
+        Vc = np.zeros(num_of_children)
+
+        return V, Vc
+
+    def eval_P(self, node: Node):
+        if isinstance(node, SamplingNode):
+            card = node.info_set.cards[node.tree_owner]
+        else:
+            card = node.info_set.cards[node.info_set.get_current_player()]
+
+        assert card is not None
+        x = node.info_set.action_history[-1]
         y = card.value
         P = self._P_tensor[x][y]
-        V = self._V_Action_tensor[tree_owner][x][y]
-        Vc = np.zeros(2)
 
-        return P, V, Vc
+        return P
 
-    def hidden_eval(self, tree_owner: int, info_set: InfoSet) -> Tuple[HiddenArray, Value, ValueChildArray]:
+    def eval_H(self, node: Node):
+        info_set = node.info_set
         cp = info_set.get_current_player()
         H = np.ones(3)
         for k in range(len(info_set.action_history) - 1):
@@ -169,14 +210,7 @@ class KuhnPokerModel(Model):
         assert card is not None
         H[card.value] = 0
         H /= np.sum(H)
-
-        x = info_set.action_history[-1]
-        y = card.value
-
-        V = self._V_Hidden_tensor[tree_owner][x][y]
-        Vc = np.zeros(len(Card))
-        return H, V, Vc
-
+        return H
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -211,7 +245,7 @@ if __name__ == '__main__':
     else:
         raise ValueError(f"Invalid player: {args.player}")
 
-    model = KuhnPokerModel(1/3, 1/3)
+    model = KuhnPokerModel(1.5/3, 1.5/3)
     root = ActionNode(info_set)
     mcts = Tree(model, root)
     visit_dist = mcts.get_visit_distribution(args.iter)
