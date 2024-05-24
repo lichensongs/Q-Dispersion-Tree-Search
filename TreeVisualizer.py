@@ -41,7 +41,7 @@ def hierarchy_pos(G, node, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5, pos=
             pos = hierarchy_pos(G, child, width=dx, vert_gap=vert_gap, vert_loc=vert_loc-vert_gap, xcenter=nextx, pos=pos, parent=node, parsed=parsed)
     return pos
 
-def draw_mcts_tree(ax, tree, node_size=1600, font_size=10):
+def draw_mcts_tree(ax, tree, node_size=1000, font_size=8):
     # Create a new directed graph
     G = nx.DiGraph()
 
@@ -69,7 +69,7 @@ def draw_mcts_tree(ax, tree, node_size=1600, font_size=10):
         info = f"cp: {node.cp}"
         info += f"\nQ={node.Q}"
         if node.V is not None:
-            info += f"\nV={node.V:.3f}"
+            info += f"\nV={node.V:.2f}"
         else:
             info += f"\nV=None"
 
@@ -80,7 +80,7 @@ def draw_mcts_tree(ax, tree, node_size=1600, font_size=10):
 
         info += f"\nres={node.residual_Q_to_V}"
 
-        ax.text(x, y + 0.04, info, fontsize=9, ha='left', va='bottom', color='black', bbox=dict(facecolor='white', alpha=0.5, edgecolor='black'))
+        ax.text(x, y + 0.04, info, fontsize=font_size, ha='left', va='bottom', color='black', bbox=dict(facecolor='white', alpha=0.5, edgecolor='black'))
 
     ax.set_title(f"tree_owner: {node.tree_owner}", loc='left', fontsize=14, fontweight='bold')
     ax.axis('off')

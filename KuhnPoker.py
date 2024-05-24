@@ -63,13 +63,11 @@ class KuhnPokerInfoSet(InfoSet):
         return torch.concat([torch.tensor([2], dtype=torch.float32), self.to_tensor()])
 
     def to_sampling_info_set(self) -> 'KuhnPokerInfoSet':
-        assert None not in self.cards
         info_set = self.clone()
         info_set.cards[info_set.get_current_player()] = None
         return info_set
 
     def to_action_info_set(self) -> 'KuhnPokerInfoSet':
-        assert None not in self.cards
         info_set = self.clone()
         info_set.cards[1 - info_set.get_current_player()] = None
         return info_set
@@ -172,7 +170,7 @@ class KuhnPokerModel(Model):
         self._V_tensor[2, 1, Q] = 1 - 3 * q # Action, Bob's tree, [01], QJ
         self._V_tensor[2, 1, K] = -2 # Action, Bob's tree, [01], KJ
 
-    def eval_V(self, node: Node):
+    def eval_V(self, node: Node) -> Tuple[Value, ValueChildArray]:
         if isinstance(node, SamplingNode):
             node_type = 1
             card = node.info_set.cards[node.tree_owner]
@@ -194,7 +192,7 @@ class KuhnPokerModel(Model):
 
         return V, Vc
 
-    def eval_P(self, node: Node):
+    def eval_P(self, node: Node) -> PolicyArray:
         if isinstance(node, SamplingNode):
             card = node.info_set.cards[node.tree_owner]
         else:
@@ -207,7 +205,7 @@ class KuhnPokerModel(Model):
 
         return P
 
-    def eval_H(self, node: Node):
+    def eval_H(self, node: Node) -> HiddenArray:
         info_set = node.info_set
         cp = info_set.get_current_player()
         H = np.ones(3)
@@ -221,6 +219,79 @@ class KuhnPokerModel(Model):
         card = info_set.cards[1 - cp]
         assert card is not None
         H[card.value] = 0
+        H /= np.sum(H)
+        return H
+
+class TensorModel(Model):
+    def __init__(self, vmodel: NNModel, pmodel: NNModel):
+        self.vmodel = vmodel
+        self.pmodel = pmodel
+
+    def eval_V(self, node) -> Tuple[Value, ValueChildArray]:
+        if isinstance(node, SamplingNode):
+            x = node.info_set.to_sampling_tensor()
+            num_of_children = 3
+        elif node.spawned_tree is None:
+            x = node.info_set.to_action_tensor()
+            num_of_children = 2
+        else:
+            x = node.info_set.to_spawned_tensor()
+            num_of_children = 2
+
+        V = self.vmodel(x).detach().numpy()[0]
+        if node.info_set.get_current_player() != node.tree_owner:
+            V = -V
+
+        Vc = np.zeros(num_of_children)
+
+        return V, Vc
+
+    def eval_P(self, node) -> PolicyArray:
+        assert isinstance(node, ActionNode)
+        cards = node.info_set.cards
+        cp = node.info_set.get_current_player()
+        action_history = node.info_set.action_history
+
+        if action_history == []:
+            return np.array([1.0, 0.0])
+        elif action_history[-1] == PASS and cards[cp] == Card.QUEEN:
+            return np.array([1.0, 0.0])
+        elif action_history[-1] == ADD_CHIP and cards[cp] == Card.JACK:
+            return np.array([1.0, 0.0])
+        # elif action_history[-1] == PASS and cards[cp] == Card.JACK:
+        #     return np.array([2/3, 1/3])
+        # elif action_history[-1] == ADD_CHIP and cards[cp] == Card.QUEEN:
+        #     return np.array([2/3, 1/3])
+        elif cards[cp] == Card.KING:
+            return np.array([0.0, 1.0])
+
+        x = node.info_set.to_action_info_set().to_tensor()
+        prob = self.pmodel(x).detach().numpy()[0]
+
+        return np.array([1 - prob, prob])
+
+    def eval_H(self, node) -> HiddenArray:
+        assert isinstance(node, SamplingNode)
+        cp = node.info_set.get_current_player()
+
+        H = np.ones(3)
+        for k in range(len(node.info_set.action_history) - 1):
+            temp_info_set = node.info_set.clone()
+            temp_info_set.action_history = node.info_set.action_history[:k]
+            action = node.info_set.action_history[k]
+            temp_cp = temp_info_set.get_current_player()
+
+            if temp_cp != cp:
+                continue
+
+            for card in Card:
+                temp_info_set.cards = [None, None]
+                temp_info_set.cards[cp] = card
+                probs = self.eval_P(ActionNode(temp_info_set))
+                H[card.value] *= probs[action]
+
+        tree_owner_card = node.info_set.cards[node.tree_owner]
+        H[tree_owner_card.value] = 0
         H /= np.sum(H)
         return H
 
@@ -262,38 +333,40 @@ if __name__ == '__main__':
     if args.seed is not None:
         np.random.seed(args.seed)
 
-    if args.savetrees is None:
+    if not args.savetrees:
         Tree.visit_counter = None
-
-    info_set = KuhnPokerInfoSet([PASS, ADD_CHIP, ADD_CHIP], [None, Card.JACK])
 
     if args.player == 'Alice':
         info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
     elif args.player == 'Bob':
         info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
 
-    model = KuhnPokerModel(1/3, 1/3)
-
     if args.alpha_num is not None:
+        vmodel = NNModel(6, 64, 1)
+        pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
+        model = TensorModel(vmodel, pmodel)
+
+        # vmodel = torch.load('model/vmodel-741.pt')
+        # pmodel = torch.load('model/pmodel-741.pt')
+        # model = TensorModel(vmodel, pmodel)
+
         num_gen = int(args.alpha_num[0])
         num_gen_games = int(args.alpha_num[1])
 
         alpha_zero = AlphaZero(model, iter=args.iter)
-        # alpha_zero.generate_games(InfoSetGenerator(), num_gen, num_gen_games)
-        # with open('self_play_games/games.pkl', 'wb') as f:
-        #     pickle.dump(alpha_zero.self_play_games, f)
-
-        vmodel = NNModel(6, 64, 1)
-        with open('self_play_games/games.pkl', 'rb') as file:
-            data = pickle.load(file)
-        data_loader_V = DataLoader(SelfPlayDataV(data), batch_size=32, shuffle=True)
-        data_loader_P = DataLoader(SelfPlayDataP(data), batch_size=32, shuffle=True)
-        pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
-        alpha_zero.train(vmodel, data_loader_V, nn.MSELoss(), num_epochs=1000, filename='model/vmodel.pt')
-        alpha_zero.train(pmodel, data_loader_P, nn.MSELoss(), lr=1, num_epochs=10000, filename='model/pmodel.pt')
-
+        alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=0, lookback=0)
 
     else:
+        vmodel = torch.load('model/vmodel-115.pt')
+        pmodel = torch.load('model/pmodel-115.pt')
+        model = TensorModel(vmodel, pmodel)
+
+        # vmodel = NNModel(6, 64, 1)
+        # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
+        # model = TensorModel(vmodel, pmodel)
+
+
+        # info_set = KuhnPokerInfoSet([PASS], [None, Card.QUEEN])
         root = ActionNode(info_set)
         mcts = Tree(model, root)
         visit_dist = mcts.get_visit_distribution(args.iter)

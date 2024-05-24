@@ -15,9 +15,6 @@ from typing import List
 from tqdm import tqdm
 import pickle
 
-Games = List["Game"]
-Game = List["TurnSnapshot"]
-
 @dataclass
 class TurnSnapshot:
     info_set: InfoSet
@@ -26,6 +23,8 @@ class TurnSnapshot:
     game_id: int
     gen_id: int
     outcome: Value
+
+Games = List[TurnSnapshot]
 
 class SelfPlayDataV(Dataset):
     def __init__(self, data: List[TurnSnapshot]):
@@ -45,7 +44,7 @@ class SelfPlayDataV(Dataset):
 
 class SelfPlayDataP(Dataset):
     def __init__(self, data: List[TurnSnapshot]):
-        self.data = data
+        self.data = [d for d in data if d.action_dist is not None]
 
     def __len__(self):
         return len(self.data)
@@ -87,13 +86,23 @@ class AlphaZero:
         self.iter = iter
         self.self_play_games = []
 
-    def generate_games(self, init_info_set_generator, n_gen=10, n_games_per_gen=100):
-        for gen in tqdm(range(n_gen)):
-            for id in tqdm(range(n_games_per_gen)):
-                self.generate_one_game(init_info_set_generator, gen, id)
+    def run(self, init_info_set_generator, n_generations=32, n_games_per_gen=256, gen_start_num=0, lookback=1024):
+        for gen_id in tqdm(range(gen_start_num, gen_start_num + n_generations)):
+            for game_id in range(n_games_per_gen):
+                self.generate_one_game(init_info_set_generator, gen_id, game_id)
+
+            data_loader_v = DataLoader(SelfPlayDataV(self.self_play_games[-lookback:]), batch_size=128, shuffle=True)
+            data_loader_p = DataLoader(SelfPlayDataP(self.self_play_games[-lookback:]), batch_size=128, shuffle=True)
+            self.train(self.model.vmodel, data_loader_v, nn.MSELoss(), num_batches=32, filename=f'model/vmodel-{gen_id}.pt')
+            self.train(self.model.pmodel, data_loader_p, nn.MSELoss(), num_batches=32, filename=f'model/pmodel-{gen_id}.pt')
+
+        with open('self_play_games/self_play_games.pkl', 'wb') as f:
+            pickle.dump(self.self_play_games, f)
+
 
     def generate_one_game(self, init_info_set_generator, gen_id, game_id):
         info_set = init_info_set_generator()
+        # tree_owner = info_set.get_current_player()
 
         game = []
         while info_set.get_game_outcome() is  None:
@@ -112,28 +121,28 @@ class AlphaZero:
 
             info_set = info_set.apply(action)
 
+        game.append(TurnSnapshot(info_set, None, None, game_id, gen_id, None))
         outcome = info_set.get_game_outcome()
         for g in game:
             g.outcome = outcome[g.info_set.get_current_player()]
+            # g.outcome = outcome[tree_owner]
             self.self_play_games.append(g)
 
-    def train(self, model: nn.Module, data_loader: DataLoader, loss_func: nn.Module, lr=1e-2, num_epochs=1000, filename='model/model.pt'):
+    def train(self, model: nn.Module, data_loader: DataLoader, loss_func: nn.Module, lr=1e-2, num_batches=256, filename='model/model.pt'):
         learning_rate = 1e-2
         momentum = 0.9
         weight_decay = 6e-5
         self.opt = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum, weight_decay=weight_decay)
 
-        for _ in range(num_epochs):
-            batch_num = 0
-            for data in data_loader:
-                batch_num += 1
-                self.opt.zero_grad()
-                data_x, target = data
-                hat_target = model(data_x)
-                loss = loss_func(hat_target.view(-1, 1), target.view(-1, 1))
-                loss.backward()
-                self.opt.step()
-
-                print(f'Batch: {batch_num:4d} loss: {loss:.5f}')
+        for data in data_loader:
+            num_batches -= 1
+            if num_batches <= 0:
+                break
+            self.opt.zero_grad()
+            data_x, target = data
+            hat_target = model(data_x)
+            loss = loss_func(hat_target.view(-1, 1), target.view(-1, 1))
+            loss.backward()
+            self.opt.step()
 
         torch.save(model, filename)
