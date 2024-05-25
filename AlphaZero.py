@@ -76,10 +76,10 @@ class NNModel(nn.Module):
         return x
 
 class AlphaZero:
-    def __init__(self, model: Model, iter=100, preload_games=[]):
+    def __init__(self, model: Model, iter=100, preload_positions=[]):
         self.model = model
         self.iter = iter
-        self.self_play_positions = preload_games
+        self.self_play_positions = preload_positions
 
     def run(self, init_info_set_generator, n_generations=32, n_games_per_gen=256, gen_start_num=0, lookback=1024):
         for gen_id in tqdm(range(gen_start_num, gen_start_num + n_generations)):
@@ -107,7 +107,7 @@ class AlphaZero:
 
             root = ActionNode(player_info_set)
             mcts = Tree(self.model, root)
-            visit_dist = mcts.get_visit_distribution(self.iter)
+            visit_dist = mcts.get_visit_distribution(self.iter, dirichlet=True)
             probs = np.array(list(visit_dist.values()))
             action = np.random.choice(len(visit_dist), p=probs)
 

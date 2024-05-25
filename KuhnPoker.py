@@ -247,10 +247,10 @@ class TensorModel(Model):
             return np.array([1.0, 0.0])
         elif action_history[-1] == ADD_CHIP and cards[cp] == Card.JACK:
             return np.array([1.0, 0.0])
-        elif action_history[-1] == PASS and cards[cp] == Card.JACK:
-            return np.array([2/3, 1/3])
-        elif action_history[-1] == ADD_CHIP and cards[cp] == Card.QUEEN:
-            return np.array([2/3, 1/3])
+        # elif action_history[-1] == PASS and cards[cp] == Card.JACK:
+        #     return np.array([2/3, 1/3])
+        # elif action_history[-1] == ADD_CHIP and cards[cp] == Card.QUEEN:
+        #     return np.array([2/3, 1/3])
         elif cards[cp] == Card.KING:
             return np.array([0.0, 1.0])
 
@@ -331,22 +331,22 @@ if __name__ == '__main__':
         info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
 
     if args.alpha_num is not None:
-        vmodel = NNModel(5, 64, 1)
-        pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
-        model = TensorModel(vmodel, pmodel)
-
-        # vmodel = torch.load('model/vmodel-1023.pt')
-        # pmodel = torch.load('model/pmodel-1023.pt')
+        # vmodel = NNModel(5, 64, 1)
+        # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         # model = TensorModel(vmodel, pmodel)
 
-        # with open('self_play_games/self_play_games.pkl', 'rb') as f:
-        #     games = pickle.load(f)
+        vmodel = torch.load('model/vmodel-1023.pt')
+        pmodel = torch.load('model/pmodel-1023.pt')
+        model = TensorModel(vmodel, pmodel)
+
+        with open('self_play/positions.pkl', 'rb') as f:
+            games = pickle.load(f)
 
         num_gen = int(args.alpha_num[0])
         num_gen_games = int(args.alpha_num[1])
 
-        alpha_zero = AlphaZero(model, iter=args.iter)
-        alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=0, lookback=0)
+        alpha_zero = AlphaZero(model, iter=args.iter, preload_positions=games)
+        alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=1024, lookback=1024)
 
     else:
         vmodel = torch.load('model/vmodel-255.pt')

@@ -14,6 +14,7 @@ import logging
 class Constants:
     EPS = 0.0
     c_PUCT = 1.0
+    Dirichlet_ALPHA = 1.0
 
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
 
@@ -128,11 +129,16 @@ class ActionNode(Node):
 
         self.Q = to_interval(self.V)
 
-    def computePUCT(self):
+    def computePUCT(self, dirichlet: bool=False):
         c = len(self.children)
         actions = np.zeros(c, dtype=int)
         Q = np.zeros((c, 2))  # mins and maxes
-        P = self.P
+
+        if dirichlet:
+            P = 0.75 * self.P + 0.25 * np.random.dirichlet([Constants.Dirichlet_ALPHA] * len(self.P))
+        else:
+            P = self.P
+
         N = np.zeros(c)
         for a, edge in self.children.items():
             i = edge.index
@@ -157,7 +163,7 @@ class ActionNode(Node):
         action = actions[overlapping_action_indices[action_index]]
         return action
 
-    def visit(self, model: Model):
+    def visit(self, model: Model, dirichlet: bool=False):
         logging.debug(f'= Visiting {self}:')
         self.N += 1
 
@@ -177,7 +183,7 @@ class ActionNode(Node):
             action = self.spawned_tree.root.visit(model)
             self.take_child_key_update(action, model, self.P)
         else:
-            action = self.computePUCT()
+            action = self.computePUCT(dirichlet)
             self.take_child_key_update(action, model, self.P)
             return action
 
@@ -210,7 +216,6 @@ class SamplingNode(Node):
 
         self.H = model.eval_H(self)
         self.V, self.Vc = model.eval_V(self)
-        # self.H, self.V, self.Vc = model.hidden_eval(self.tree_owner, self.info_set)
         self.apply_H_mask()
         self.Q = to_interval(self.V)
 
@@ -281,10 +286,10 @@ class Tree:
     def __str__(self):
         return f'Tree(id={self.tree_id}, owner={self.tree_owner}, root={self.root})'
 
-    def get_visit_distribution(self, n: int) -> Dict[Action, float]:
+    def get_visit_distribution(self, n: int, dirichlet: bool=False) -> Dict[Action, float]:
         while self.root.N <= n:
             logging.debug(f'======= visit tree: {self}')
-            self.root.visit(self.model)
+            self.root.visit(self.model, dirichlet=dirichlet)
             if Tree.visit_counter is not None:
                 Tree.visit_counter.take_data_snapshot()
 
