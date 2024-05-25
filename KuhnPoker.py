@@ -53,15 +53,6 @@ class KuhnPokerInfoSet(InfoSet):
         cards = torch.tensor([-1 if c is None else c.value for c in self.cards], dtype=torch.float32)
         return torch.cat([hist, cards])
 
-    def to_action_tensor(self) -> torch.Tensor:
-        return torch.concat([torch.tensor([0], dtype=torch.float32), self.to_action_info_set().to_tensor()])
-
-    def to_sampling_tensor(self) -> torch.Tensor:
-        return torch.concat([torch.tensor([1], dtype=torch.float32), self.to_sampling_info_set().to_tensor()])
-
-    def to_spawned_tensor(self) -> torch.Tensor:
-        return torch.concat([torch.tensor([2], dtype=torch.float32), self.to_tensor()])
-
     def to_sampling_info_set(self) -> 'KuhnPokerInfoSet':
         info_set = self.clone()
         info_set.cards[info_set.get_current_player()] = None
@@ -231,20 +222,15 @@ class TensorModel(Model):
         self.pmodel = pmodel
 
     def eval_V(self, node) -> Tuple[Value, ValueChildArray]:
-        if isinstance(node, SamplingNode):
-            x = node.info_set.to_sampling_tensor()
-            num_of_children = 3
-        elif node.spawned_tree is None:
-            x = node.info_set.to_action_tensor()
-            num_of_children = 2
-        else:
-            x = node.info_set.to_spawned_tensor()
-            num_of_children = 2
-
+        x = node.info_set.to_tensor()
         V = self.vmodel(x).detach().numpy()[0]
         if node.info_set.get_current_player() != node.tree_owner:
             V = -V
 
+        if isinstance(node, SamplingNode):
+            num_of_children = 3
+        else:
+            num_of_children = 2
         Vc = np.zeros(num_of_children)
 
         return V, Vc
@@ -345,7 +331,7 @@ if __name__ == '__main__':
         info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
 
     if args.alpha_num is not None:
-        vmodel = NNModel(6, 64, 1)
+        vmodel = NNModel(5, 64, 1)
         pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         model = TensorModel(vmodel, pmodel)
 

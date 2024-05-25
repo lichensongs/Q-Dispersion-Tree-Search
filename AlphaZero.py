@@ -33,11 +33,8 @@ class SelfPlayDataV(Dataset):
 
     def __getitem__(self, i):
         data = self.data[i]
-        x0 = data.info_set.to_action_tensor()
-        x1 = data.info_set.to_sampling_tensor()
-        x2 = data.info_set.to_spawned_tensor()
-        x = torch.stack([x0, x1, x2], axis=0)
-        v = torch.tensor([[data.value_target]]*3, dtype=torch.float32)
+        x = data.info_set.to_tensor()
+        v = torch.tensor([data.value_target], dtype=torch.float32)
         return (x, v)
 
 class SelfPlayDataP(Dataset):
@@ -114,7 +111,9 @@ class AlphaZero:
             probs = np.array(list(visit_dist.values()))
             action = np.random.choice(len(visit_dist), p=probs)
 
-            positions.append(Position(info_set, visit_dist, action, game_id, gen_id, None))
+            positions.append(Position(info_set.to_action_info_set(), visit_dist, action, game_id, gen_id, None))
+            positions.append(Position(info_set.to_sampling_info_set(), None, None, game_id, gen_id, None))
+            positions.append(Position(info_set, None, None, game_id, gen_id, None))
 
             info_set = info_set.apply(action)
 
