@@ -1,6 +1,6 @@
 from model import Model
-from info_set import InfoSet
-from ISMCTS import ActionNode, Tree, Node
+from basic_types import InfoSet
+from ISMCTS import ActionNode, Tree
 from basic_types import ActionDistribution, Value, Action
 
 
@@ -16,18 +16,16 @@ from tqdm import tqdm
 import pickle
 
 @dataclass
-class TurnSnapshot:
+class Position:
     info_set: InfoSet
-    action_dist: ActionDistribution
+    policy_target: ActionDistribution
     action: Action
     game_id: int
     gen_id: int
-    outcome: Value
-
-Games = List[TurnSnapshot]
+    value_target: Value
 
 class SelfPlayDataV(Dataset):
-    def __init__(self, data: List[TurnSnapshot]):
+    def __init__(self, data: List[Position]):
         self.data = data
 
     def __len__(self):
@@ -39,12 +37,12 @@ class SelfPlayDataV(Dataset):
         x1 = data.info_set.to_sampling_tensor()
         x2 = data.info_set.to_spawned_tensor()
         x = torch.stack([x0, x1, x2], axis=0)
-        v = torch.tensor([[data.outcome]]*3, dtype=torch.float32)
+        v = torch.tensor([[data.value_target]]*3, dtype=torch.float32)
         return (x, v)
 
 class SelfPlayDataP(Dataset):
-    def __init__(self, data: List[TurnSnapshot]):
-        self.data = [d for d in data if d.action_dist is not None]
+    def __init__(self, data: List[Position]):
+        self.data = [d for d in data if d.policy_target is not None]
 
     def __len__(self):
         return len(self.data)
@@ -52,7 +50,7 @@ class SelfPlayDataP(Dataset):
     def __getitem__(self, i):
         data = self.data[i]
         x = data.info_set.to_action_info_set().to_tensor()
-        p = torch.tensor([data.action_dist[1]], dtype=torch.float32)
+        p = torch.tensor([data.policy_target[1]], dtype=torch.float32)
         return (x, p)
 
 
@@ -81,30 +79,29 @@ class NNModel(nn.Module):
         return x
 
 class AlphaZero:
-    def __init__(self, model: Model, iter=100):
+    def __init__(self, model: Model, iter=100, preload_games=[]):
         self.model = model
         self.iter = iter
-        self.self_play_games = []
+        self.self_play_positions = preload_games
 
     def run(self, init_info_set_generator, n_generations=32, n_games_per_gen=256, gen_start_num=0, lookback=1024):
         for gen_id in tqdm(range(gen_start_num, gen_start_num + n_generations)):
             for game_id in range(n_games_per_gen):
                 self.generate_one_game(init_info_set_generator, gen_id, game_id)
 
-            data_loader_v = DataLoader(SelfPlayDataV(self.self_play_games[-lookback:]), batch_size=128, shuffle=True)
-            data_loader_p = DataLoader(SelfPlayDataP(self.self_play_games[-lookback:]), batch_size=128, shuffle=True)
+            data_loader_v = DataLoader(SelfPlayDataV(self.self_play_positions[-lookback:]), batch_size=128, shuffle=True)
+            data_loader_p = DataLoader(SelfPlayDataP(self.self_play_positions[-lookback:]), batch_size=128, shuffle=True)
             self.train(self.model.vmodel, data_loader_v, nn.MSELoss(), num_batches=32, filename=f'model/vmodel-{gen_id}.pt')
             self.train(self.model.pmodel, data_loader_p, nn.MSELoss(), num_batches=32, filename=f'model/pmodel-{gen_id}.pt')
 
-        with open('self_play_games/self_play_games.pkl', 'wb') as f:
-            pickle.dump(self.self_play_games, f)
+        with open('self_play/positions.pkl', 'wb') as f:
+            pickle.dump(self.self_play_positions, f)
 
 
     def generate_one_game(self, init_info_set_generator, gen_id, game_id):
         info_set = init_info_set_generator()
-        # tree_owner = info_set.get_current_player()
 
-        game = []
+        positions = []
         while info_set.get_game_outcome() is  None:
             player_info_set = info_set.clone()
             cp = player_info_set.get_current_player()
@@ -117,16 +114,15 @@ class AlphaZero:
             probs = np.array(list(visit_dist.values()))
             action = np.random.choice(len(visit_dist), p=probs)
 
-            game.append(TurnSnapshot(info_set, visit_dist, action, game_id, gen_id, None))
+            positions.append(Position(info_set, visit_dist, action, game_id, gen_id, None))
 
             info_set = info_set.apply(action)
 
-        game.append(TurnSnapshot(info_set, None, None, game_id, gen_id, None))
+        positions.append(Position(info_set, None, None, game_id, gen_id, None))
         outcome = info_set.get_game_outcome()
-        for g in game:
-            g.outcome = outcome[g.info_set.get_current_player()]
-            # g.outcome = outcome[tree_owner]
-            self.self_play_games.append(g)
+        for g in positions:
+            g.value_target = outcome[g.info_set.get_current_player()]
+        self.self_play_positions.extend(positions)
 
     def train(self, model: nn.Module, data_loader: DataLoader, loss_func: nn.Module, lr=1e-2, num_batches=256, filename='model/model.pt'):
         learning_rate = 1e-2

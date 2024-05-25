@@ -1,22 +1,24 @@
+from basic_types import VisitCounter
+
 import pickle
 import numpy as np
 import copy
 
-class VisitCounter:
+class TreeVisitCounter(VisitCounter):
     def __init__(self):
         self._trees = []
         self._trees_snapshot = []
         self.visited = 0
 
-    def add_tree(self, tree):
+    def add_data(self, tree):
         self._trees.append(tree)
 
-    def add_snapshot(self):
+    def take_data_snapshot(self):
         trees = [copy.deepcopy(tree) for tree in self._trees if tree.root.N > 0]
         self._trees_snapshot.append(trees)
         self.visited += 1
 
-    def save_visited_trees(self, folder_path):
+    def save_snapshots(self, folder_path):
         with open(f"{folder_path}/tree_snapshots.pkl", 'wb') as f:
             pickle.dump(self._trees_snapshot, f)
 

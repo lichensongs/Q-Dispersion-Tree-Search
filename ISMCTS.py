@@ -1,7 +1,7 @@
 from basic_types import Action, ActionDistribution, HiddenValue, Interval, IntervalLike
-from info_set import InfoSet
+from basic_types import InfoSet, VisitCounter
 from model import Model
-from utils import VisitCounter, perturb_prob_simplex
+from utils import perturb_prob_simplex
 
 import numpy as np
 
@@ -265,7 +265,7 @@ class SamplingNode(Node):
 
 class Tree:
     next_id = 0
-    visit_counter = VisitCounter()
+    visit_counter: Optional[VisitCounter] = None
 
     def __init__(self, model: Model, root: ActionNode):
         self.model = model
@@ -276,7 +276,7 @@ class Tree:
         self.tree_id = Tree.next_id
         Tree.next_id += 1
         if Tree.visit_counter is not None:
-            Tree.visit_counter.add_tree(self)
+            Tree.visit_counter.add_data(self)
 
     def __str__(self):
         return f'Tree(id={self.tree_id}, owner={self.tree_owner}, root={self.root})'
@@ -286,7 +286,7 @@ class Tree:
             logging.debug(f'======= visit tree: {self}')
             self.root.visit(self.model)
             if Tree.visit_counter is not None:
-                Tree.visit_counter.add_snapshot()
+                Tree.visit_counter.take_data_snapshot()
 
         n_total = self.root.N - 1
         return {action: edge.node.N / n_total for action, edge in self.root.children.items()}

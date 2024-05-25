@@ -1,8 +1,8 @@
-from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray
+from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray, InfoSet
 from ISMCTS import ActionNode, Constants, Tree, Node, SamplingNode
-from info_set import InfoSet
 from model import Model
-from AlphaZero import AlphaZero, NNModel, SelfPlayDataV, SelfPlayDataP
+from AlphaZero import AlphaZero, NNModel
+from utils import TreeVisitCounter
 
 import numpy as np
 import torch
@@ -206,6 +206,9 @@ class KuhnPokerModel(Model):
         return P
 
     def eval_H(self, node: Node) -> HiddenArray:
+        if node.info_set.action_history == [PASS, ADD_CHIP, ADD_CHIP] and node.info_set.cards == [Card.KING, None]:
+            pass
+
         info_set = node.info_set
         cp = info_set.get_current_player()
         H = np.ones(3)
@@ -258,10 +261,10 @@ class TensorModel(Model):
             return np.array([1.0, 0.0])
         elif action_history[-1] == ADD_CHIP and cards[cp] == Card.JACK:
             return np.array([1.0, 0.0])
-        # elif action_history[-1] == PASS and cards[cp] == Card.JACK:
-        #     return np.array([2/3, 1/3])
-        # elif action_history[-1] == ADD_CHIP and cards[cp] == Card.QUEEN:
-        #     return np.array([2/3, 1/3])
+        elif action_history[-1] == PASS and cards[cp] == Card.JACK:
+            return np.array([2/3, 1/3])
+        elif action_history[-1] == ADD_CHIP and cards[cp] == Card.QUEEN:
+            return np.array([2/3, 1/3])
         elif cards[cp] == Card.KING:
             return np.array([0.0, 1.0])
 
@@ -333,8 +336,8 @@ if __name__ == '__main__':
     if args.seed is not None:
         np.random.seed(args.seed)
 
-    if not args.savetrees:
-        Tree.visit_counter = None
+    if args.savetrees:
+        Tree.visit_counter = TreeVisitCounter()
 
     if args.player == 'Alice':
         info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
@@ -346,9 +349,12 @@ if __name__ == '__main__':
         pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         model = TensorModel(vmodel, pmodel)
 
-        # vmodel = torch.load('model/vmodel-741.pt')
-        # pmodel = torch.load('model/pmodel-741.pt')
+        # vmodel = torch.load('model/vmodel-1023.pt')
+        # pmodel = torch.load('model/pmodel-1023.pt')
         # model = TensorModel(vmodel, pmodel)
+
+        # with open('self_play_games/self_play_games.pkl', 'rb') as f:
+        #     games = pickle.load(f)
 
         num_gen = int(args.alpha_num[0])
         num_gen_games = int(args.alpha_num[1])
@@ -357,19 +363,24 @@ if __name__ == '__main__':
         alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=0, lookback=0)
 
     else:
-        vmodel = torch.load('model/vmodel-115.pt')
-        pmodel = torch.load('model/pmodel-115.pt')
+        vmodel = torch.load('model/vmodel-255.pt')
+        pmodel = torch.load('model/pmodel-255.pt')
         model = TensorModel(vmodel, pmodel)
 
         # vmodel = NNModel(6, 64, 1)
         # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         # model = TensorModel(vmodel, pmodel)
 
+        # model = KuhnPokerModel(0.01, 0.01)
 
         # info_set = KuhnPokerInfoSet([PASS], [None, Card.QUEEN])
         root = ActionNode(info_set)
         mcts = Tree(model, root)
-        visit_dist = mcts.get_visit_distribution(args.iter)
-        print(visit_dist)
+        try:
+            visit_dist = mcts.get_visit_distribution(args.iter)
+            print(visit_dist)
+        except:
+            print('Error in get_visit_distribution')
+
         if Tree.visit_counter is not None:
-            Tree.visit_counter.save_visited_trees('debug')
+            Tree.visit_counter.save_snapshots('debug')
