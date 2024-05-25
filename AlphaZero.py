@@ -1,7 +1,6 @@
 from model import Model
-from basic_types import InfoSet
 from ISMCTS import ActionNode, Tree
-from basic_types import ActionDistribution, Value, Action
+from basic_types import InfoSet, ActionDistribution, Value, Action
 
 
 import torch
