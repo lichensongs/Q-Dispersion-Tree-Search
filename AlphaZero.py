@@ -116,7 +116,9 @@ class AlphaZero:
 
             info_set = info_set.apply(action)
 
+        positions.append(Position(info_set.to_sampling_info_set(), None, None, game_id, gen_id, None))
         positions.append(Position(info_set, None, None, game_id, gen_id, None))
+
         outcome = info_set.get_game_outcome()
         for g in positions:
             g.value_target = outcome[g.info_set.get_current_player()]
