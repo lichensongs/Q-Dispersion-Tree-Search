@@ -147,6 +147,7 @@ class ActionNode(Node):
             N[i] = child.N
 
         PUCT_N_adjustment = Constants.c_PUCT * P * np.sqrt(np.sum(N)) / (N + 1)
+        PUCT_N_adjustment_raw = Constants.c_PUCT * self.P * np.sqrt(np.sum(N)) / (N + 1)
         PUCT = Q + PUCT_N_adjustment[:, np.newaxis]
 
         # check for pure case
@@ -158,7 +159,7 @@ class ActionNode(Node):
             logging.debug(f'Q: {q}, N: {n}, PUCT: {puct}')
 
         overlapping_action_indices = np.where(PUCT[:, 1] >= max_lower_bound - 1e-8)[0]
-        action_index = np.argmax(PUCT_N_adjustment[overlapping_action_indices])
+        action_index = np.argmax(PUCT_N_adjustment_raw[overlapping_action_indices])
         action = actions[overlapping_action_indices[action_index]]
         return action
 

@@ -320,6 +320,7 @@ if __name__ == '__main__':
 
     if args.seed is not None:
         np.random.seed(args.seed)
+        random.seed(args.seed)
 
     if args.savetrees:
         Tree.visit_counter = TreeVisitCounter()
@@ -334,35 +335,36 @@ if __name__ == '__main__':
         pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         model = TensorModel(vmodel, pmodel)
 
-        # vmodel = torch.load('model/vmodel-1023.pt')
-        # pmodel = torch.load('model/pmodel-1023.pt')
+        # vmodel = torch.load('model_0.001eps/vmodel-590.pt')
+        # pmodel = torch.load('model_0.001eps/pmodel-590.pt')
         # model = TensorModel(vmodel, pmodel)
 
-        # with open('self_play/positions.pkl', 'rb') as f:
-        #     games = pickle.load(f)
+        # with open('self_play/positions_0.001eps.pkl', 'rb') as f:
+        #     positions = pickle.load(f)
 
         num_gen = int(args.alpha_num[0])
         num_gen_games = int(args.alpha_num[1])
 
-        alpha_zero = AlphaZero(model, iter=args.iter)
-        alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=0, lookback=1024)
+        positions = []
+        alpha_zero = AlphaZero(model, iter=args.iter, preload_positions=positions)
+        alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=0, buffer=128)
 
     else:
-        vmodel = torch.load('model/vmodel-600.pt')
-        pmodel = torch.load('model/pmodel-600.pt')
+        vmodel = torch.load('model/vmodel-1023.pt')
+        pmodel = torch.load('model/pmodel-1023.pt')
         model = TensorModel(vmodel, pmodel)
 
         # vmodel = NNModel(6, 64, 1)
         # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         # model = TensorModel(vmodel, pmodel)
 
-        # model = KuhnPokerModel(0.01, 0.01)
+        # model = KuhnPokerModel(1/3, 1/3)
 
         # info_set = KuhnPokerInfoSet([PASS], [None, Card.QUEEN])
         root = ActionNode(info_set)
         mcts = Tree(model, root)
         try:
-            visit_dist = mcts.get_visit_distribution(args.iter)
+            visit_dist = mcts.get_visit_distribution(args.iter, dirichlet=True)
             print(visit_dist)
         except:
             print('Error in get_visit_distribution')
