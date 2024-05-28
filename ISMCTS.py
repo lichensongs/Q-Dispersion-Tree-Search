@@ -88,6 +88,7 @@ class ActionNode(Node):
         self.V = None  #self.game_outcome if self.terminal() else None
         self.Vc = None
         self.spawned_tree: Optional[Tree] = None
+        self.dirichlet_draw = None
 
         if self.terminal():
             self.V = self.game_outcome[self.tree_owner]
@@ -134,7 +135,7 @@ class ActionNode(Node):
         Q = np.zeros((c, 2))  # mins and maxes
 
         if dirichlet:
-            P = 0.75 * self.P + 0.25 * np.random.dirichlet([Constants.Dirichlet_ALPHA] * len(self.P))
+            P = 0.75 * self.P + 0.25 * self.dirichlet_draw
         else:
             P = self.P
 
@@ -174,6 +175,8 @@ class ActionNode(Node):
         if not self._expanded:
             self.expand(model)
             logging.debug(f'= end visit {self} expand, return self.Q: {self.Q}')
+            if dirichlet:
+                self.dirichlet_draw = np.random.dirichlet([Constants.Dirichlet_ALPHA] * len(self.P))
             return
 
         if self.spawned_tree is not None:

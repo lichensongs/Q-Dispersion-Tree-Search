@@ -80,19 +80,15 @@ class AlphaZero:
         self.iter = iter
         self.self_play_positions = preload_positions
 
-    def run(self, init_info_set_generator, n_generations=32, n_games_per_gen=256, gen_start_num=0, buffer=1024):
+    def run(self, init_info_set_generator, n_generations=32, n_games_per_gen=256, gen_start_num=0, buffer=1024, epoch=1):
         for gen_id in tqdm(range(gen_start_num, gen_start_num + n_generations)):
             for game_id in range(n_games_per_gen):
                 self.generate_one_game(init_info_set_generator, gen_id, game_id)
 
-            data_loader_v = DataLoader(SelfPlayDataV(self.self_play_positions[-buffer:]), batch_size=128, shuffle=True)
-            data_loader_p = DataLoader(SelfPlayDataP(self.self_play_positions[-buffer:]), batch_size=128, shuffle=True)
+            data_loader_v = DataLoader(SelfPlayDataV(self.self_play_positions[-buffer:]), batch_size=256, shuffle=True)
+            data_loader_p = DataLoader(SelfPlayDataP(self.self_play_positions[-buffer:]), batch_size=256, shuffle=True)
             self.train(self.model.vmodel, data_loader_v, nn.MSELoss(), num_batches=32, filename=f'model/vmodel-{gen_id}.pt')
-            self.train(self.model.pmodel, data_loader_p, nn.MSELoss(), num_batches=32, filename=f'model/pmodel-{gen_id}.pt')
-
-        with open('self_play/positions.pkl', 'wb') as f:
-            pickle.dump(self.self_play_positions, f)
-
+            self.train(self.model.pmodel, data_loader_p, nn.MSELoss(), num_batches=32, filename=f'model/pmodel-{gen_id}.pt', epoch=epoch)
 
     def generate_one_game(self, init_info_set_generator, gen_id, game_id):
         info_set = init_info_set_generator()
@@ -124,21 +120,22 @@ class AlphaZero:
             g.value_target = outcome[g.info_set.get_current_player()]
         self.self_play_positions.extend(positions)
 
-    def train(self, model: nn.Module, data_loader: DataLoader, loss_func: nn.Module, lr=1e-2, num_batches=256, filename='model/model.pt'):
-        learning_rate = 1e-1
+    def train(self, model: nn.Module, data_loader: DataLoader, loss_func: nn.Module, lr=1e-2, num_batches=256, epoch=1, filename='model/model.pt'):
+        learning_rate = 1e-1 #5e-2
         momentum = 0.9
-        weight_decay = 6e-5
+        weight_decay = 1e-6
         self.opt = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum, weight_decay=weight_decay)
 
-        for data in data_loader:
-            num_batches -= 1
-            if num_batches <= 0:
-                break
-            self.opt.zero_grad()
-            data_x, target = data
-            hat_target = model(data_x)
-            loss = loss_func(hat_target.view(-1, 1), target.view(-1, 1))
-            loss.backward()
-            self.opt.step()
+        for _ in range(epoch):
+            for data in data_loader:
+                num_batches -= 1
+                if num_batches <= 0:
+                    break
+                self.opt.zero_grad()
+                data_x, target = data
+                hat_target = model(data_x)
+                loss = loss_func(hat_target.view(-1, 1), target.view(-1, 1))
+                loss.backward()
+                self.opt.step()
 
         torch.save(model, filename)

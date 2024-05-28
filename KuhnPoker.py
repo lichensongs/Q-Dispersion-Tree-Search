@@ -331,23 +331,30 @@ if __name__ == '__main__':
         info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
 
     if args.alpha_num is not None:
-        vmodel = NNModel(5, 64, 1)
-        pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
-        model = TensorModel(vmodel, pmodel)
-
-        # vmodel = torch.load('model_0.001eps/vmodel-590.pt')
-        # pmodel = torch.load('model_0.001eps/pmodel-590.pt')
+        # vmodel = NNModel(5, 64, 1)
+        # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         # model = TensorModel(vmodel, pmodel)
 
-        # with open('self_play/positions_0.001eps.pkl', 'rb') as f:
-        #     positions = pickle.load(f)
+        vmodel = torch.load('model/vmodel-19538.pt')
+        pmodel = torch.load('model/pmodel-19538.pt')
+        model = TensorModel(vmodel, pmodel)
+
+        # positions = []
+        with open('self_play/positions_20000.pkl', 'rb') as f:
+            positions = pickle.load(f)
 
         num_gen = int(args.alpha_num[0])
         num_gen_games = int(args.alpha_num[1])
 
-        positions = []
         alpha_zero = AlphaZero(model, iter=args.iter, preload_positions=positions)
-        alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=0, buffer=128)
+        try:
+            alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=19539, buffer=0, epoch=1)
+        except KeyboardInterrupt:
+            print('Interrupted: save positions to self_play/positions.pkl')
+        finally:
+            with open('self_play/positions_20000.pkl', 'wb') as f:
+                pickle.dump(alpha_zero.self_play_positions, f)
+
 
     else:
         vmodel = torch.load('model/vmodel-1023.pt')
@@ -363,11 +370,12 @@ if __name__ == '__main__':
         # info_set = KuhnPokerInfoSet([PASS], [None, Card.QUEEN])
         root = ActionNode(info_set)
         mcts = Tree(model, root)
+
         try:
             visit_dist = mcts.get_visit_distribution(args.iter, dirichlet=True)
             print(visit_dist)
-        except:
-            print('Error in get_visit_distribution')
-
-        if Tree.visit_counter is not None:
-            Tree.visit_counter.save_snapshots('debug')
+        except Exception as e:
+            print(f'error: {e}')
+        finally:
+            if Tree.visit_counter is not None:
+                Tree.visit_counter.save_snapshots('debug')
