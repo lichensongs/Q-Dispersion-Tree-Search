@@ -107,6 +107,8 @@ class ActionNode(Node):
         # self.P, self.V, self.Vc = model.action_eval(self.tree_owner, self.info_set)
         self.P = model.eval_P(self)
         self.V, self.Vc = model.eval_V(self)
+        if np.isnan(self.V):
+            self.V = 0.0
         self.Q = to_interval(self.V)
 
     def expand(self, model: Model):
@@ -219,6 +221,8 @@ class SamplingNode(Node):
 
         self.H = model.eval_H(self)
         self.V, self.Vc = model.eval_V(self)
+        if np.isnan(self.V):
+            self.V = 0.0
         self.apply_H_mask()
         self.Q = to_interval(self.V)
 

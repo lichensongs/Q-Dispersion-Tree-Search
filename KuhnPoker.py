@@ -29,7 +29,6 @@ class Card(Enum):
     QUEEN = 1
     KING = 2
 
-
 class KuhnPokerInfoSet(InfoSet):
     def __init__(self, action_history: List[Action], cards: List[Optional[Card]]=[None, None]):
         self.action_history = action_history
@@ -306,6 +305,7 @@ if __name__ == '__main__':
     parser.add_argument("--seed", type=int, help="Random seed")
     parser.add_argument("--savetrees", action='store_true', help="Save visited trees")
     parser.add_argument("--alpha_num", nargs='+', help="run alpha zero loop with num_gen and num_games_per_gen")
+    parser.add_argument("--processes", type=int, help="Number of processes")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -330,35 +330,40 @@ if __name__ == '__main__':
     elif args.player == 'Bob':
         info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
 
-    if args.alpha_num is not None:
-        # vmodel = NNModel(5, 64, 1)
-        # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
-        # model = TensorModel(vmodel, pmodel)
+    if args.processes is not None:
+        num_processes = args.processes
+    else:
+        num_processes = 0
 
-        vmodel = torch.load('model/vmodel-19538.pt')
-        pmodel = torch.load('model/pmodel-19538.pt')
+    if args.alpha_num is not None:
+        vmodel = NNModel(5, 64, 1)
+        pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         model = TensorModel(vmodel, pmodel)
 
-        # positions = []
-        with open('self_play/positions_20000.pkl', 'rb') as f:
-            positions = pickle.load(f)
+        # vmodel = torch.load('model/vmodel-49999.pt')
+        # pmodel = torch.load('model/pmodel-49999.pt')
+        # model = TensorModel(vmodel, pmodel)
+
+        positions = []
+        # with open('self_play/positions_50000.pkl', 'rb') as f:
+        #     positions = pickle.load(f)
 
         num_gen = int(args.alpha_num[0])
         num_gen_games = int(args.alpha_num[1])
 
         alpha_zero = AlphaZero(model, iter=args.iter, preload_positions=positions)
         try:
-            alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=19539, buffer=0, epoch=1)
+            alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=0, buffer=0, epoch=1, num_processes=num_processes)
         except KeyboardInterrupt:
             print('Interrupted: save positions to self_play/positions.pkl')
         finally:
-            with open('self_play/positions_20000.pkl', 'wb') as f:
+            with open('self_play/positions_10k_batch.pkl', 'wb') as f:
                 pickle.dump(alpha_zero.self_play_positions, f)
 
 
     else:
-        vmodel = torch.load('model/vmodel-1023.pt')
-        pmodel = torch.load('model/pmodel-1023.pt')
+        vmodel = torch.load('model/vmodel-39500.pt')
+        pmodel = torch.load('model/pmodel-39500.pt')
         model = TensorModel(vmodel, pmodel)
 
         # vmodel = NNModel(6, 64, 1)
