@@ -1,7 +1,6 @@
 import numpy as np
 import abc
-from typing import List, Optional
-
+from typing import List, Optional, Dict
 
 PolicyArray = np.ndarray  # shape of (|A|,)
 ValueChildArray = np.ndarray
@@ -12,7 +11,7 @@ Interval = np.ndarray  # shape of (2,)
 IntervalLike = Interval | float
 HiddenValue = int
 Action = int
-ActionDistribution = np.ndarray
+ActionDistribution = Dict[int, float]
 
 class InfoSet(abc.ABC):
     @abc.abstractmethod
@@ -28,7 +27,7 @@ class InfoSet(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_game_outcome(self) -> Optional[int]:
+    def get_game_outcome(self) -> Optional[np.array]:
         pass
 
     @abc.abstractmethod
