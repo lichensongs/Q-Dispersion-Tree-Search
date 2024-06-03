@@ -1,3 +1,5 @@
+import os
+
 from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray, InfoSet
 from ISMCTS import ActionNode, Constants, Tree, Node, SamplingNode
 from model import Model
@@ -64,7 +66,7 @@ class KuhnPokerInfoSet(InfoSet):
     def get_current_player(self) -> Player:
         return Player(len(self.action_history) % 2).value
 
-    def get_game_outcome(self) -> Optional[Value]:
+    def get_game_outcome(self) -> Optional[np.array]:
         """
         None if game not terminal.
         """
@@ -329,6 +331,8 @@ if __name__ == '__main__':
         info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
     elif args.player == 'Bob':
         info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
+    else:
+        raise ValueError(f"Invalid player name {args.player}")
 
     if args.processes is not None:
         num_processes = args.processes
@@ -357,6 +361,7 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             print('Interrupted: save positions to self_play/positions.pkl')
         finally:
+            os.makedirs('self_play', exist_ok=True)
             with open('self_play/positions.pkl', 'wb') as f:
                 pickle.dump(alpha_zero.self_play_positions, f)
 

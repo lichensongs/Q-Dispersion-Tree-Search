@@ -1,3 +1,5 @@
+import os
+
 from model import Model
 from ISMCTS import ActionNode, Tree
 from basic_types import InfoSet, ActionDistribution, Value, Action
@@ -10,18 +12,18 @@ import torch.nn.init as init
 from torch import optim
 import numpy as np
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from tqdm import tqdm
 from multiprocessing import Pool
 
 @dataclass
 class Position:
     info_set: InfoSet
-    policy_target: ActionDistribution
-    action: Action
-    game_id: int
-    gen_id: int
-    value_target: Value
+    policy_target: Optional[ActionDistribution]
+    action: Optional[Action]
+    game_id: Optional[int]
+    gen_id: Optional[int]
+    value_target: Optional[Value]
 
 class SelfPlayDataV(Dataset):
     def __init__(self, data: List[Position]):
@@ -75,10 +77,10 @@ class NNModel(nn.Module):
         return x
 
 class AlphaZero:
-    def __init__(self, model: Model, iter=100, preload_positions=[]):
+    def __init__(self, model: Model, iter=100, preload_positions=None):
         self.model = model
         self.iter = iter
-        self.self_play_positions = preload_positions
+        self.self_play_positions = preload_positions or []
 
     def run(self, init_info_set_generator, n_generations=32, n_games_per_gen=256, gen_start_num=0, buffer=1024, epoch=1, num_processes=0):
         for gen_id in tqdm(range(gen_start_num, gen_start_num + n_generations)):
@@ -107,7 +109,7 @@ class AlphaZero:
         info_set = init_info_set_generator()
 
         positions = []
-        while info_set.get_game_outcome() is  None:
+        while info_set.get_game_outcome() is None:
             player_info_set = info_set.clone()
             cp = player_info_set.get_current_player()
             player_info_set.cards = [None for _ in player_info_set.cards]
@@ -160,4 +162,5 @@ class AlphaZero:
                 self.opt.step()
 
         model.to("cpu")
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         torch.save(model, filename)
