@@ -19,7 +19,7 @@ class TreeVisitCounter(VisitCounter):
         self.visited += 1
 
     def save_snapshots(self, folder_path):
-        with open(f"{folder_path}/tree_snapshots.pkl", 'wb') as f:
+        with open(f"{folder_path}", 'wb') as f:
             pickle.dump(self._trees_snapshot, f)
 
 def perturb_prob_simplex(intervals: np.ndarray, probs: np.ndarray, eps=0.01):

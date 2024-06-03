@@ -216,8 +216,8 @@ class KuhnPokerModel(Model):
 
 class TensorModel(Model):
     def __init__(self, vmodel: NNModel, pmodel: NNModel):
-        self.vmodel = vmodel
-        self.pmodel = pmodel
+        self.vmodel = vmodel.to(torch.device('cpu'))
+        self.pmodel = pmodel.to(torch.device('cpu'))
 
     def eval_V(self, node) -> Tuple[Value, ValueChildArray]:
         x = node.info_set.to_tensor()
@@ -340,12 +340,12 @@ if __name__ == '__main__':
         pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         model = TensorModel(vmodel, pmodel)
 
-        # vmodel = torch.load('model/vmodel-49999.pt')
-        # pmodel = torch.load('model/pmodel-49999.pt')
+        # vmodel = torch.load('model/vmodel-2559.pt')
+        # pmodel = torch.load('model/pmodel-2559.pt')
         # model = TensorModel(vmodel, pmodel)
 
         positions = []
-        # with open('self_play/positions_50000.pkl', 'rb') as f:
+        # with open('self_play/positions_0.01eps_after_2048_0_eps.pkl', 'rb') as f:
         #     positions = pickle.load(f)
 
         num_gen = int(args.alpha_num[0])
@@ -357,30 +357,30 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             print('Interrupted: save positions to self_play/positions.pkl')
         finally:
-            with open('self_play/positions_10k_batch.pkl', 'wb') as f:
+            with open('self_play/positions.pkl', 'wb') as f:
                 pickle.dump(alpha_zero.self_play_positions, f)
 
 
     else:
-        vmodel = torch.load('model/vmodel-39500.pt')
-        pmodel = torch.load('model/pmodel-39500.pt')
+        vmodel = torch.load('model/vmodel-100.pt')
+        pmodel = torch.load('model/pmodel-100.pt')
         model = TensorModel(vmodel, pmodel)
 
         # vmodel = NNModel(6, 64, 1)
         # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         # model = TensorModel(vmodel, pmodel)
 
-        # model = KuhnPokerModel(1/3, 1/3)
+        # model = KuhnPokerModel(1/3, 0.34)
 
         # info_set = KuhnPokerInfoSet([PASS], [None, Card.QUEEN])
         root = ActionNode(info_set)
         mcts = Tree(model, root)
 
         try:
-            visit_dist = mcts.get_visit_distribution(args.iter, dirichlet=True)
+            visit_dist = mcts.get_visit_distribution(args.iter, dirichlet=False)
             print(visit_dist)
         except Exception as e:
             print(f'error: {e}')
         finally:
             if Tree.visit_counter is not None:
-                Tree.visit_counter.save_snapshots('debug')
+                Tree.visit_counter.save_snapshots('debug/tree_snapshots.pkl')

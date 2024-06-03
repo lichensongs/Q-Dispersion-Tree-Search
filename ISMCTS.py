@@ -12,7 +12,7 @@ import logging
 
 class Constants:
     EPS = 0.0
-    c_PUCT = 1.0
+    c_PUCT = 0.1
     Dirichlet_ALPHA = 1.0
 
 CHEAT = True  # evaluate model for child nodes immediately, so we don't need Vc
