@@ -313,34 +313,17 @@ def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: i
             with open(f'{folder}/positions.pkl', 'wb') as f:
                 pickle.dump(alpha_zero.self_play_positions, f)
 
-def gen_mcts_tree(config, info_set):
-        vmodel = torch.load(config['vmodel'])
-        pmodel = torch.load(config['pmodel'])
-        model = TensorModel(vmodel, pmodel)
+def gen_tree_hist(model, info_set, iter=100, dirichlet=False):
+    
+    Tree.visit_counter = TreeVisitCounter()
+    root = ActionNode(info_set)
+    mcts = Tree(model, root)
 
-        if config['player'] == 'Alice':
-            info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
-        elif config['player'] == 'Bob':
-            info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
-        
-        # vmodel = NNModel(6, 64, 1)
-        # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
-        # model = TensorModel(vmodel, pmodel)
+    visit_dist = mcts.get_visit_distribution(iter, dirichlet=dirichlet)
+    print(visit_dist)
+    
+    return Tree.visit_counter.get_tree_hist()
 
-        # model = KuhnPokerModel(1/3, 0.34)
-
-        # info_set = KuhnPokerInfoSet([PASS], [None, Card.QUEEN])
-        root = ActionNode(info_set)
-        mcts = Tree(model, root)
-
-        try:
-            visit_dist = mcts.get_visit_distribution(args.iter, dirichlet=False)
-            print(visit_dist)
-        except Exception as e:
-            print(f'error: {e}')
-        finally:
-            if Tree.visit_counter is not None:
-                Tree.visit_counter.save_snapshots('debug/tree_snapshots.pkl')
                 
 def run_alphazero(config):
     logging.basicConfig(
@@ -368,11 +351,12 @@ def run_alphazero(config):
 
     num_gen = int(config['alpha_num'][0])
     games_per_gen = int(config['alpha_num'][1])
-    run_loop_fresh(num_gen=num_gen, 
-                        games_per_gen=games_per_gen, 
-                        iter=config['iter'], 
-                        num_processes=num_processes,
-                        folder=os.path.dirname(args.config))
+    if config['load_and_resume'] is None:
+        run_loop_fresh(num_gen=num_gen, 
+                            games_per_gen=games_per_gen, 
+                            iter=config['iter'], 
+                            num_processes=num_processes,
+                            folder=os.path.dirname(args.config))
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
