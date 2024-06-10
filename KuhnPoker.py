@@ -3,7 +3,7 @@ import os
 from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray, InfoSet
 from ISMCTS import ActionNode, Constants, Tree, Node, SamplingNode
 from model import Model
-from AlphaZero import AlphaZero, NNModel
+from AlphaZero import AlphaZero, NNModel, Position
 from utils import TreeVisitCounter
 
 import numpy as np
@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 import random
 import pickle
+import json
 
 from enum import Enum
 from typing import List, Optional, Tuple
@@ -298,79 +299,30 @@ class InfoSetGenerator:
         info_set.cards = cards
         return info_set
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--debug", action='store_true', help="Enable debug logging")
-    parser.add_argument("--player", type=str, help="Alice or Bob")
-    parser.add_argument("--iter", type=int, help="Number of iterations")
-    parser.add_argument("--eps", type=float, help="Range parameter for Q-value uncertainty")
-    parser.add_argument("--seed", type=int, help="Random seed")
-    parser.add_argument("--savetrees", action='store_true', help="Save visited trees")
-    parser.add_argument("--alpha_num", nargs='+', help="run alpha zero loop with num_gen and num_games_per_gen")
-    parser.add_argument("--processes", type=int, help="Number of processes")
-    args = parser.parse_args()
-
-    logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.INFO,
-        format="%(message)s",
-        filename="kuhn_poker.log",
-        filemode='w'
-    )
-
-    if args.eps is not None:
-        Constants.EPS = args.eps
-
-    if args.seed is not None:
-        np.random.seed(args.seed)
-        random.seed(args.seed)
-
-    if args.savetrees:
-        Tree.visit_counter = TreeVisitCounter()
-
-    if args.player == 'Alice':
-        info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
-    elif args.player == 'Bob':
-        info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
-    else:
-        raise ValueError(f"Invalid player name {args.player}")
-
-    if args.processes is not None:
-        num_processes = args.processes
-    else:
-        num_processes = 0
-
-    if args.alpha_num is not None:
+def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder='model'):
         vmodel = NNModel(5, 64, 1)
         pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         model = TensorModel(vmodel, pmodel)
 
-        # vmodel = torch.load('model/vmodel-2559.pt')
-        # pmodel = torch.load('model/pmodel-2559.pt')
-        # model = TensorModel(vmodel, pmodel)
-
-        positions = []
-        # with open('self_play/positions_0.01eps_after_2048_0_eps.pkl', 'rb') as f:
-        #     positions = pickle.load(f)
-
-        num_gen = int(args.alpha_num[0])
-        num_gen_games = int(args.alpha_num[1])
-
-        alpha_zero = AlphaZero(model, iter=args.iter, preload_positions=positions)
+        alpha_zero = AlphaZero(model, iter=iter, folder=folder)
         try:
-            alpha_zero.run(InfoSetGenerator(), num_gen, num_gen_games, gen_start_num=0, buffer=0, epoch=1, num_processes=num_processes)
+            alpha_zero.run(InfoSetGenerator(), num_gen, games_per_gen, gen_start_num=0, buffer=0, epoch=1, num_processes=num_processes)
         except KeyboardInterrupt:
-            print('Interrupted: save positions to self_play/positions.pkl')
+            print(f'Interrupted: save positions to {folder}/positions.pkl')
         finally:
-            os.makedirs('self_play', exist_ok=True)
-            with open('self_play/positions.pkl', 'wb') as f:
+            with open(f'{folder}/positions.pkl', 'wb') as f:
                 pickle.dump(alpha_zero.self_play_positions, f)
 
-
-    else:
-        vmodel = torch.load('model/vmodel-100.pt')
-        pmodel = torch.load('model/pmodel-100.pt')
+def gen_mcts_tree(config, info_set):
+        vmodel = torch.load(config['vmodel'])
+        pmodel = torch.load(config['pmodel'])
         model = TensorModel(vmodel, pmodel)
 
+        if config['player'] == 'Alice':
+            info_set = KuhnPokerInfoSet([PASS, ADD_CHIP], [Card.QUEEN, None])
+        elif config['player'] == 'Bob':
+            info_set = KuhnPokerInfoSet([PASS], [None, Card.JACK])
+        
         # vmodel = NNModel(6, 64, 1)
         # pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
         # model = TensorModel(vmodel, pmodel)
@@ -389,3 +341,43 @@ if __name__ == '__main__':
         finally:
             if Tree.visit_counter is not None:
                 Tree.visit_counter.save_snapshots('debug/tree_snapshots.pkl')
+                
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to the configuration JSON file")
+    args = parser.parse_args()
+    
+    with open(args.config, 'r') as file:
+        config = json.load(file)
+
+    logging.basicConfig(
+        level=logging.DEBUG if config.get('debug') else logging.INFO,
+        format="%(message)s",
+        filename=f"{os.path.dirname(args.config)}/kuhn_poker.log",
+        filemode='w'
+    )
+
+    Constants.EPS = config['eps']
+    Constants.c_PUCT = config['c_PUCT']
+
+    if config.get('seed') is not None:
+        np.random.seed(config['seed'])
+        random.seed(config['seed'])
+
+    if config.get('savetrees', False):
+        Tree.visit_counter = TreeVisitCounter()
+
+    if config.get('processes') is not None:
+        num_processes = config['processes']
+    else:
+        num_processes = 0
+
+    if config.get('alpha_num') is not None:
+        num_gen = int(config['alpha_num'][0])
+        games_per_gen = int(config['alpha_num'][1])
+        run_loop_fresh(num_gen=num_gen, 
+                            games_per_gen=games_per_gen, 
+                            iter=config['iter'], 
+                            num_processes=num_processes,
+                            folder=os.path.dirname(args.config))
+

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 from tqdm import tqdm
 from multiprocessing import Pool
+import pickle
 
 @dataclass
 class Position:
@@ -77,9 +78,10 @@ class NNModel(nn.Module):
         return x
 
 class AlphaZero:
-    def __init__(self, model: Model, iter=100, preload_positions=None):
+    def __init__(self, model: Model, iter=100, preload_positions=None, folder='model'):
         self.model = model
         self.iter = iter
+        self.folder = folder
         self.self_play_positions = preload_positions or []
 
     def run(self, init_info_set_generator, n_generations=32, n_games_per_gen=256, gen_start_num=0, buffer=1024, epoch=1, num_processes=0):
@@ -98,11 +100,15 @@ class AlphaZero:
                 for game_id in range(n_games_per_gen):
                     new_positions.extend(self.generate_one_game(self.model, self.iter, init_info_set_generator, gen_id, game_id))
             self.self_play_positions.extend(new_positions)
+            
+            if gen_id % 100 == 0:
+                with open(f'{self.folder}/positions.pkl', 'wb') as f:
+                    pickle.dump(self.self_play_positions, f)
 
             data_loader_v = DataLoader(SelfPlayDataV(self.self_play_positions[-buffer:]), batch_size=1024, shuffle=True)
             data_loader_p = DataLoader(SelfPlayDataP(self.self_play_positions[-buffer:]), batch_size=1024, shuffle=True)
-            self.train(self.model.vmodel, data_loader_v, nn.MSELoss(), num_batches=16, lr=1e-2, filename=f'model/vmodel-{gen_id}.pt')
-            self.train(self.model.pmodel, data_loader_p, nn.MSELoss(), num_batches=16, lr=1e-1, filename=f'model/pmodel-{gen_id}.pt', epoch=epoch)
+            self.train(self.model.vmodel, data_loader_v, nn.MSELoss(), num_batches=16, lr=1e-2, filename=f'{self.folder}/vmodel-{gen_id}.pt')
+            self.train(self.model.pmodel, data_loader_p, nn.MSELoss(), num_batches=16, lr=1e-1, filename=f'{self.folder}/pmodel-{gen_id}.pt', epoch=epoch)
 
     @staticmethod
     def generate_one_game(model, iter, init_info_set_generator, gen_id, game_id):
