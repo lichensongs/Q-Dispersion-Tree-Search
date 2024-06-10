@@ -388,8 +388,8 @@ def run_alphazero(config):
     else:
         num_processes = 0
 
-    num_gen = int(config['alpha_num'][0])
-    games_per_gen = int(config['alpha_num'][1])
+    num_gen = int(config['num_gens'])
+    games_per_gen = int(config['num_games_per_gen'])
     
     if config['load_and_resume'] is None:
         run_loop_fresh(num_gen=num_gen, 
