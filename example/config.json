@@ -2,6 +2,7 @@
     "iter": 1000,
     "eps": 0.0,
     "c_PUCT": 0.1,
+    "Dirichlet_ALPHA": 1.0,
     "alpha_num": ["2048", "32"],
     "processes": 8
 }

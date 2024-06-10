@@ -85,6 +85,9 @@ class AlphaZero:
         self.self_play_positions = preload_positions or []
 
     def run(self, init_info_set_generator, n_generations=32, n_games_per_gen=256, gen_start_num=0, buffer=1024, epoch=1, num_processes=0):
+        os.makedirs(f'{self.folder}/vmodel', exist_ok=True)
+        os.makedirs(f'{self.folder}/pmodel', exist_ok=True)
+        
         for gen_id in tqdm(range(gen_start_num, gen_start_num + n_generations)):
 
             if num_processes > 0:
@@ -107,8 +110,8 @@ class AlphaZero:
 
             data_loader_v = DataLoader(SelfPlayDataV(self.self_play_positions[-buffer:]), batch_size=1024, shuffle=True)
             data_loader_p = DataLoader(SelfPlayDataP(self.self_play_positions[-buffer:]), batch_size=1024, shuffle=True)
-            self.train(self.model.vmodel, data_loader_v, nn.MSELoss(), num_batches=16, lr=1e-2, filename=f'{self.folder}/vmodel-{gen_id}.pt')
-            self.train(self.model.pmodel, data_loader_p, nn.MSELoss(), num_batches=16, lr=1e-1, filename=f'{self.folder}/pmodel-{gen_id}.pt', epoch=epoch)
+            self.train(self.model.vmodel, data_loader_v, nn.MSELoss(), num_batches=16, lr=1e-2, filename=f'{self.folder}/vmodel/vmodel-{gen_id}.pt')
+            self.train(self.model.pmodel, data_loader_p, nn.MSELoss(), num_batches=16, lr=1e-1, filename=f'{self.folder}/pmodel/pmodel-{gen_id}.pt', epoch=epoch)
 
     @staticmethod
     def generate_one_game(model, iter, init_info_set_generator, gen_id, game_id):

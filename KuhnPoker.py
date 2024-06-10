@@ -342,14 +342,7 @@ def gen_mcts_tree(config, info_set):
             if Tree.visit_counter is not None:
                 Tree.visit_counter.save_snapshots('debug/tree_snapshots.pkl')
                 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True, help="Path to the configuration JSON file")
-    args = parser.parse_args()
-    
-    with open(args.config, 'r') as file:
-        config = json.load(file)
-
+def run_alphazero(config):
     logging.basicConfig(
         level=logging.DEBUG if config.get('debug') else logging.INFO,
         format="%(message)s",
@@ -359,6 +352,7 @@ if __name__ == '__main__':
 
     Constants.EPS = config['eps']
     Constants.c_PUCT = config['c_PUCT']
+    Constants.Dirichlet_ALPHA = config['Dirichlet_ALPHA']
 
     if config.get('seed') is not None:
         np.random.seed(config['seed'])
@@ -372,12 +366,22 @@ if __name__ == '__main__':
     else:
         num_processes = 0
 
-    if config.get('alpha_num') is not None:
-        num_gen = int(config['alpha_num'][0])
-        games_per_gen = int(config['alpha_num'][1])
-        run_loop_fresh(num_gen=num_gen, 
-                            games_per_gen=games_per_gen, 
-                            iter=config['iter'], 
-                            num_processes=num_processes,
-                            folder=os.path.dirname(args.config))
+    num_gen = int(config['alpha_num'][0])
+    games_per_gen = int(config['alpha_num'][1])
+    run_loop_fresh(num_gen=num_gen, 
+                        games_per_gen=games_per_gen, 
+                        iter=config['iter'], 
+                        num_processes=num_processes,
+                        folder=os.path.dirname(args.config))
+    
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to the configuration JSON file")
+    args = parser.parse_args()
+    
+    with open(args.config, 'r') as file:
+        config = json.load(file)
+
+    run_alphazero(config)
+    
 

@@ -4,6 +4,8 @@ import pickle
 import numpy as np
 import copy
 
+import os
+
 class TreeVisitCounter(VisitCounter):
     def __init__(self):
         self._trees = []
@@ -56,3 +58,14 @@ def perturb_prob_simplex(intervals: np.ndarray, probs: np.ndarray, eps=0.01):
         union_interval[bound_index] = np.dot(weights, intervals[:, bound_index])
 
     return union_interval
+
+def get_max_model_number(directory):
+    max_model_num = 0
+    
+    for filename in os.listdir(directory):
+        if filename.endswith('.pt'):
+            # Extract the number from the filename
+            number = int(filename.split('-')[1].split('.')[0])
+            max_model_num = max(max_model_num, number)
+
+    return max_model_num
