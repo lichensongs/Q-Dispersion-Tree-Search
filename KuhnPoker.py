@@ -299,8 +299,8 @@ class InfoSetGenerator:
         info_set.cards = cards
         return info_set
     
-def gen_tree_hist(model, info_set, iter=100, dirichlet=False):
-    
+def gen_tree_hist(model, info_set, iter=100, dirichlet=False, eps=0.01):
+    Constants.eps=eps
     Tree.visit_counter = TreeVisitCounter()
     root = ActionNode(info_set)
     mcts = Tree(model, root)
@@ -391,7 +391,7 @@ def run_alphazero(config):
     num_gen = int(config['num_gens'])
     games_per_gen = int(config['num_games_per_gen'])
     
-    if config['load_and_resume'] is None:
+    if not config['load_and_resume']:
         run_loop_fresh(num_gen=num_gen, 
                        games_per_gen=games_per_gen, 
                        iter=config['iter'], 

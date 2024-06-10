@@ -104,7 +104,7 @@ class AlphaZero:
                     new_positions.extend(self.generate_one_game(self.model, self.iter, init_info_set_generator, gen_id, game_id))
             self.self_play_positions.extend(new_positions)
             
-            if gen_id % 100 == 0:
+            if gen_id % 100 == 0 and gen_id > 0:
                 with open(f'{self.folder}/positions.pkl', 'wb') as f:
                     pickle.dump(self.self_play_positions, f)
 
