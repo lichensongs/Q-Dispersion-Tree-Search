@@ -310,7 +310,7 @@ def gen_tree_hist(model, info_set, iter=100, dirichlet=False):
     
     return Tree.visit_counter.get_tree_hist()
 
-def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder='model'):
+def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str):
     vmodel = NNModel(5, 64, 1)
     pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
     model = TensorModel(vmodel, pmodel)
@@ -331,7 +331,7 @@ def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: i
         with open(f'{folder}/positions.pkl', 'wb') as f:
             pickle.dump(alpha_zero.self_play_positions, f)
 
-def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder='model'):
+def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str):
     max_vmodel = get_max_model_number(f'{folder}/vmodel')
     max_pmodel = get_max_model_number(f'{folder}/pmodel')
 
@@ -345,7 +345,7 @@ def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes:
     with open(f'{folder}/positions.pkl', 'rb') as f:
         positions = pickle.load(f)
     
-    alpha_zero = AlphaZero(model, iter=iter, preload_positions=positions)
+    alpha_zero = AlphaZero(model, iter=iter, preload_positions=positions, folder=folder)
     
     try:
         alpha_zero.run(InfoSetGenerator(), 
