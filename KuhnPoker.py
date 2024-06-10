@@ -3,8 +3,8 @@ import os
 from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, ValueChildArray, InfoSet
 from ISMCTS import ActionNode, Constants, Tree, Node, SamplingNode
 from model import Model
-from AlphaZero import AlphaZero, NNModel, Position
-from utils import TreeVisitCounter
+from AlphaZero import AlphaZero, NNModel
+from utils import TreeVisitCounter, get_max_model_number
 
 import numpy as np
 import torch
@@ -298,21 +298,7 @@ class InfoSetGenerator:
 
         info_set.cards = cards
         return info_set
-
-def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder='model'):
-        vmodel = NNModel(5, 64, 1)
-        pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
-        model = TensorModel(vmodel, pmodel)
-
-        alpha_zero = AlphaZero(model, iter=iter, folder=folder)
-        try:
-            alpha_zero.run(InfoSetGenerator(), num_gen, games_per_gen, gen_start_num=0, buffer=0, epoch=1, num_processes=num_processes)
-        except KeyboardInterrupt:
-            print(f'Interrupted: save positions to {folder}/positions.pkl')
-        finally:
-            with open(f'{folder}/positions.pkl', 'wb') as f:
-                pickle.dump(alpha_zero.self_play_positions, f)
-
+    
 def gen_tree_hist(model, info_set, iter=100, dirichlet=False):
     
     Tree.visit_counter = TreeVisitCounter()
@@ -324,12 +310,65 @@ def gen_tree_hist(model, info_set, iter=100, dirichlet=False):
     
     return Tree.visit_counter.get_tree_hist()
 
-                
+def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder='model'):
+    vmodel = NNModel(5, 64, 1)
+    pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
+    model = TensorModel(vmodel, pmodel)
+
+    alpha_zero = AlphaZero(model, iter=iter, folder=folder)
+    
+    try:
+        alpha_zero.run(InfoSetGenerator(), 
+                       n_generations=num_gen, 
+                       n_games_per_gen=games_per_gen, 
+                       gen_start_num=0, 
+                       buffer=0, 
+                       epoch=1, 
+                       num_processes=num_processes)
+    except KeyboardInterrupt:
+        print(f'Interrupted: save positions to {folder}/positions.pkl')
+    finally:
+        with open(f'{folder}/positions.pkl', 'wb') as f:
+            pickle.dump(alpha_zero.self_play_positions, f)
+
+def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder='model'):
+    max_vmodel = get_max_model_number(f'{folder}/vmodel')
+    max_pmodel = get_max_model_number(f'{folder}/pmodel')
+
+    assert max_vmodel == max_pmodel
+    
+    vmodel = torch.load(f'{folder}/vmodel/vmodel-{max_vmodel}.pt')
+    pmodel = torch.load(f'{folder}/pmodel/pmodel-{max_pmodel}.pt')
+    
+    model = TensorModel(vmodel, pmodel)
+    
+    with open(f'{folder}/positions.pkl', 'rb') as f:
+        positions = pickle.load(f)
+    
+    alpha_zero = AlphaZero(model, iter=iter, preload_positions=positions)
+    
+    try:
+        alpha_zero.run(InfoSetGenerator(), 
+                       n_generations=num_gen-max_vmodel-1, 
+                       n_games_per_gen=games_per_gen, 
+                       gen_start_num=max_vmodel+1, 
+                       buffer=0, 
+                       epoch=1, 
+                       num_processes=num_processes)
+    except KeyboardInterrupt:
+        print(f'Interrupted: save positions to {folder}/positions.pkl')
+    finally:
+        with open(f'{folder}/positions.pkl', 'wb') as f:
+            pickle.dump(alpha_zero.self_play_positions, f)
+    
+    
 def run_alphazero(config):
+    folder = os.path.dirname(args.config)
+    
     logging.basicConfig(
         level=logging.DEBUG if config.get('debug') else logging.INFO,
         format="%(message)s",
-        filename=f"{os.path.dirname(args.config)}/kuhn_poker.log",
+        filename=f"{folder}/kuhn_poker.log",
         filemode='w'
     )
 
@@ -351,13 +390,20 @@ def run_alphazero(config):
 
     num_gen = int(config['alpha_num'][0])
     games_per_gen = int(config['alpha_num'][1])
+    
     if config['load_and_resume'] is None:
         run_loop_fresh(num_gen=num_gen, 
-                            games_per_gen=games_per_gen, 
-                            iter=config['iter'], 
-                            num_processes=num_processes,
-                            folder=os.path.dirname(args.config))
-    
+                       games_per_gen=games_per_gen, 
+                       iter=config['iter'], 
+                       num_processes=num_processes,
+                       folder=folder)
+    else:
+        run_loop_preload(num_gen=num_gen, 
+                         games_per_gen=games_per_gen, 
+                         iter=config['iter'], 
+                         num_processes=num_processes,
+                         folder=folder)   
+        
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path to the configuration JSON file")

@@ -1,5 +1,5 @@
 {
-    "load_and_resume": false,
+    "load_and_resume": true,
     "iter": 1000,
     "eps": 0.0,
     "c_PUCT": 0.1,
