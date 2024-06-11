@@ -1,10 +1,11 @@
 {
-    "load_and_resume": true,
+    "load_and_resume": false,
+    "learn_trivial": false,
     "iter": 1000,
     "eps": 0.0,
     "c_PUCT": 0.1,
     "Dirichlet_ALPHA": 1.0,
     "num_gens": 5000,
     "num_games_per_gen": 32,
-    "processes": 2
+    "processes": 8
 }

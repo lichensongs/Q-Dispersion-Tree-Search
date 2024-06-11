@@ -218,9 +218,10 @@ class KuhnPokerModel(Model):
         return H
 
 class TensorModel(Model):
-    def __init__(self, vmodel: NNModel, pmodel: NNModel):
+    def __init__(self, vmodel: NNModel, pmodel: NNModel, learn_trivial=False):
         self.vmodel = vmodel.to(torch.device('cpu'))
         self.pmodel = pmodel.to(torch.device('cpu'))
+        self.learn_trivial = learn_trivial
 
     def eval_V(self, node) -> Tuple[Value, ValueChildArray]:
         x = node.info_set.to_tensor()
@@ -242,18 +243,19 @@ class TensorModel(Model):
         cp = node.info_set.get_current_player()
         action_history = node.info_set.action_history
 
-        if action_history == []:
-            return np.array([1.0, 0.0])
-        elif action_history[-1] == PASS and cards[cp] == Card.QUEEN:
-            return np.array([1.0, 0.0])
-        elif action_history[-1] == ADD_CHIP and cards[cp] == Card.JACK:
-            return np.array([1.0, 0.0])
-        # elif action_history[-1] == PASS and cards[cp] == Card.JACK:
-        #     return np.array([2/3, 1/3])
-        # elif action_history[-1] == ADD_CHIP and cards[cp] == Card.QUEEN:
-        #     return np.array([2/3, 1/3])
-        elif cards[cp] == Card.KING:
-            return np.array([0.0, 1.0])
+        if not self.learn_trivial:
+            if action_history == []:
+                return np.array([1.0, 0.0])
+            elif action_history[-1] == PASS and cards[cp] == Card.QUEEN:
+                return np.array([1.0, 0.0])
+            elif action_history[-1] == ADD_CHIP and cards[cp] == Card.JACK:
+                return np.array([1.0, 0.0])
+            # elif action_history[-1] == PASS and cards[cp] == Card.JACK:
+            #     return np.array([2/3, 1/3])
+            # elif action_history[-1] == ADD_CHIP and cards[cp] == Card.QUEEN:
+            #     return np.array([2/3, 1/3])
+            elif cards[cp] == Card.KING:
+                return np.array([0.0, 1.0])
 
         x = node.info_set.to_action_info_set().to_tensor()
         prob = self.pmodel(x).detach().numpy()[0]
@@ -310,7 +312,7 @@ def gen_tree_hist(model, info_set, iter=100, dirichlet=False, eps=0.01):
     
     return Tree.visit_counter.get_tree_hist()
 
-def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str):
+def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str, learn_trivial: bool):
     vmodel = NNModel(5, 64, 1)
     pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
     model = TensorModel(vmodel, pmodel)
@@ -331,7 +333,7 @@ def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: i
         with open(f'{folder}/positions.pkl', 'wb') as f:
             pickle.dump(alpha_zero.self_play_positions, f)
 
-def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str):
+def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str, learn_trivial: bool):
     max_vmodel = get_max_model_number(f'{folder}/vmodel')
     max_pmodel = get_max_model_number(f'{folder}/pmodel')
 
@@ -396,13 +398,15 @@ def run_alphazero(config):
                        games_per_gen=games_per_gen, 
                        iter=config['iter'], 
                        num_processes=num_processes,
-                       folder=folder)
+                       folder=folder,
+                       learn_trivial=config.get('learn_trivial', False))
     else:
         run_loop_preload(num_gen=num_gen, 
                          games_per_gen=games_per_gen, 
                          iter=config['iter'], 
                          num_processes=num_processes,
-                         folder=folder)   
+                         folder=folder,
+                         learn_trivial=config.get('learn_trivial', False))   
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
