@@ -4,7 +4,7 @@ from basic_types import Action, HiddenArray, HiddenValue, PolicyArray, Value, Va
 from ISMCTS import ActionNode, Constants, Tree, Node, SamplingNode
 from model import Model
 from AlphaZero import AlphaZero, NNModel
-from utils import TreeVisitCounter, get_max_model_number
+from utils import TreeVisitCounter, get_max_model_number, check_directory
 
 import numpy as np
 import torch
@@ -288,11 +288,11 @@ class TensorModel(Model):
         return H
 
 class InfoSetGenerator:
-    def __init__(self):
-        pass
+    def __init__(self, info_set: KuhnPokerInfoSet):
+        self.info_set = info_set.clone()
 
     def __call__(self):
-        info_set = KuhnPokerInfoSet([PASS])
+        info_set = self.info_set.clone()
 
         deck  = list(Card)
         random.shuffle(deck)
@@ -302,7 +302,7 @@ class InfoSetGenerator:
         return info_set
     
 def gen_tree_hist(model, info_set, iter=100, dirichlet=False, eps=0.01):
-    Constants.eps=eps
+    Constants.EPS = eps
     Tree.visit_counter = TreeVisitCounter()
     root = ActionNode(info_set)
     mcts = Tree(model, root)
@@ -312,19 +312,20 @@ def gen_tree_hist(model, info_set, iter=100, dirichlet=False, eps=0.01):
     
     return Tree.visit_counter.get_tree_hist()
 
-def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str, learn_trivial: bool):
+def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str, learn_trivial: bool, 
+                   init_info_set: KuhnPokerInfoSet, buffer: int):
     vmodel = NNModel(5, 64, 1)
     pmodel = NNModel(5, 64, 1, last_activation=torch.nn.Sigmoid())
-    model = TensorModel(vmodel, pmodel)
+    model = TensorModel(vmodel, pmodel, learn_trivial=learn_trivial)
 
     alpha_zero = AlphaZero(model, iter=iter, folder=folder)
     
     try:
-        alpha_zero.run(InfoSetGenerator(), 
+        alpha_zero.run(InfoSetGenerator(init_info_set), 
                        n_generations=num_gen, 
                        n_games_per_gen=games_per_gen, 
                        gen_start_num=0, 
-                       buffer=0, 
+                       buffer=buffer, 
                        epoch=1, 
                        num_processes=num_processes)
     except KeyboardInterrupt:
@@ -333,7 +334,8 @@ def run_loop_fresh(num_gen: int, games_per_gen: int, iter: int, num_processes: i
         with open(f'{folder}/positions.pkl', 'wb') as f:
             pickle.dump(alpha_zero.self_play_positions, f)
 
-def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str, learn_trivial: bool):
+def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes: int, folder: str, learn_trivial: bool, 
+                     init_info_set: KuhnPokerInfoSet, buffer: int):
     max_vmodel = get_max_model_number(f'{folder}/vmodel')
     max_pmodel = get_max_model_number(f'{folder}/pmodel')
 
@@ -342,7 +344,7 @@ def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes:
     vmodel = torch.load(f'{folder}/vmodel/vmodel-{max_vmodel}.pt')
     pmodel = torch.load(f'{folder}/pmodel/pmodel-{max_pmodel}.pt')
     
-    model = TensorModel(vmodel, pmodel)
+    model = TensorModel(vmodel, pmodel, learn_trivial=learn_trivial)
     
     with open(f'{folder}/positions.pkl', 'rb') as f:
         positions = pickle.load(f)
@@ -350,11 +352,11 @@ def run_loop_preload(num_gen: int, games_per_gen: int, iter: int, num_processes:
     alpha_zero = AlphaZero(model, iter=iter, preload_positions=positions, folder=folder)
     
     try:
-        alpha_zero.run(InfoSetGenerator(), 
+        alpha_zero.run(InfoSetGenerator(init_info_set), 
                        n_generations=num_gen-max_vmodel-1, 
                        n_games_per_gen=games_per_gen, 
                        gen_start_num=max_vmodel+1, 
-                       buffer=0, 
+                       buffer=buffer, 
                        epoch=1, 
                        num_processes=num_processes)
     except KeyboardInterrupt:
@@ -382,6 +384,11 @@ def run_alphazero(config):
         np.random.seed(config['seed'])
         random.seed(config['seed'])
 
+    if config.get('buffer') is not None:
+        buffer = config['buffer']
+    else:
+        buffer = 0
+    
     if config.get('savetrees', False):
         Tree.visit_counter = TreeVisitCounter()
 
@@ -389,24 +396,38 @@ def run_alphazero(config):
         num_processes = config['processes']
     else:
         num_processes = 0
-
+        
+    learn_trivial = config.get('learn_trivial', False)
+    
+    if learn_trivial:
+        init_info_set = KuhnPokerInfoSet([])
+    else:
+        init_info_set = KuhnPokerInfoSet([PASS])
+    
+    # init_info_set = KuhnPokerInfoSet([PASS])
+    
     num_gen = int(config['num_gens'])
     games_per_gen = int(config['num_games_per_gen'])
     
     if not config['load_and_resume']:
+        check_directory(folder)
         run_loop_fresh(num_gen=num_gen, 
                        games_per_gen=games_per_gen, 
                        iter=config['iter'], 
                        num_processes=num_processes,
                        folder=folder,
-                       learn_trivial=config.get('learn_trivial', False))
+                       learn_trivial=learn_trivial,
+                       init_info_set=init_info_set,
+                       buffer=buffer)
     else:
         run_loop_preload(num_gen=num_gen, 
                          games_per_gen=games_per_gen, 
                          iter=config['iter'], 
                          num_processes=num_processes,
                          folder=folder,
-                         learn_trivial=config.get('learn_trivial', False))   
+                         learn_trivial=learn_trivial,
+                         init_info_set=init_info_set,
+                         buffer=buffer)   
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

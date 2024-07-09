@@ -72,3 +72,17 @@ def get_max_model_number(directory):
             max_model_num = max(max_model_num, number)
 
     return max_model_num
+
+def check_directory(dir_path):
+    items = os.listdir(dir_path)
+
+    for item in items:
+        item_path = os.path.join(dir_path, item)
+        
+        if os.path.isdir(item_path):
+            raise ValueError(f"Found a directory: {item}")
+        
+        if not (item.endswith('.json') or item.endswith('.log')):
+            raise ValueError(f"Found a non-JSON/LOG file: {item}")
+
+    print("All items in the directory are JSON/LOG files and there are no subdirectories.")
